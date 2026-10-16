@@ -1,0 +1,284 @@
+---
+title: "`r params$title`"
+author: "`r params$author`"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    code_folding: hide
+    df_print: paged
+params:
+  output_dir:    "output"
+  title:         "scRNA-seq Analysis Report"
+  author:        ""
+  padj_cutoff:   0.05
+  log2fc_cutoff: 1.0
+  species:       "human"
+  run_traj:      FALSE
+  run_comm:      TRUE
+  methods_draft: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  out.width = "80%"
+)
+
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+
+out <- params$output_dir
+```
+
+# Overview
+
+```{r config-summary}
+tibble::tribble(
+  ~Parameter, ~Value,
+  "Species",          params$species,
+  "padj cutoff",      params$padj_cutoff,
+  "log2FC cutoff",    params$log2fc_cutoff,
+  "Trajectory",       as.character(params$run_traj),
+  "Cell communication", as.character(params$run_comm)
+) %>%
+  kbl(caption = "Analysis parameters") %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+```
+
+---
+
+# 1. Cell Type Composition
+
+```{r composition}
+comp_file <- file.path(out, "composition", "cell_type_proportions.csv")
+if (file.exists(comp_file)) {
+  freq_df <- read.csv(comp_file)
+  kbl(head(freq_df, 30), digits = 3,
+      caption = "Cell type proportions (first 30 rows)") %>%
+    kable_styling(bootstrap_options = c("striped","hover","condensed"),
+                  full_width = FALSE, font_size = 12)
+} else {
+  cat("Composition results not found.\n")
+}
+```
+
+```{r composition-plots}
+img <- file.path(out, "composition", "plots", "composition_bar.png")
+if (file.exists(img)) knitr::include_graphics(img)
+```
+
+```{r propeller}
+prop_file <- file.path(out, "composition", "propeller_results.csv")
+if (file.exists(prop_file)) {
+  prop <- read.csv(prop_file)
+  sig  <- filter(prop, FDR < 0.05)
+  cat("**Significant cell types (propeller FDR < 0.05):**", nrow(sig), "\n\n")
+  if (nrow(prop) > 0) {
+    kbl(prop, digits = 4,
+        caption = "Propeller results (all cell types)") %>%
+      kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+  }
+}
+```
+
+---
+
+# 2. Pseudobulk Differential Expression
+
+```{r de-summary}
+de_file <- file.path(out, "pseudobulk_de", "de_significant.csv")
+if (file.exists(de_file)) {
+  sig <- read.csv(de_file)
+  cat("**Total significant DE genes** (padj <", params$padj_cutoff,
+      ", |log2FC| >=", params$log2fc_cutoff, "):", nrow(sig), "\n\n")
+
+  summary_tbl <- sig %>%
+    group_by(cell_type, contrast) %>%
+    summarise(
+      n_up   = sum(log2FoldChange > 0, na.rm = TRUE),
+      n_down = sum(log2FoldChange < 0, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  kbl(summary_tbl, caption = "DE summary per cell type × contrast") %>%
+    kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+} else {
+  cat("DE results not found.\n")
+}
+```
+
+```{r volcano-plots, results='asis'}
+vol_dir <- file.path(out, "pseudobulk_de", "plots")
+if (dir.exists(vol_dir)) {
+  imgs <- list.files(vol_dir, pattern = "^volcano_.*\\.png$", full.names = TRUE)
+  for (img in head(imgs, 20)) {
+    cat("\n")
+    knitr::include_graphics(img)
+    cat("\n\n")
+  }
+}
+```
+
+---
+
+# 3. Enrichment Analysis
+
+```{r enrichment-summary}
+enr_dir <- file.path(out, "enrichment")
+csv_files <- list.files(enr_dir, pattern = "\\.csv$", full.names = TRUE)
+if (length(csv_files) > 0) {
+  counts <- sapply(csv_files, function(f) nrow(read.csv(f)))
+  enr_summary <- tibble::tibble(
+    file  = basename(csv_files),
+    terms = counts
+  ) %>% filter(terms > 0)
+
+  cat("**Enrichment result files with hits:**", nrow(enr_summary), "\n\n")
+  kbl(head(enr_summary, 30)) %>%
+    kable_styling(bootstrap_options = c("striped","condensed"),
+                  full_width = FALSE, font_size = 11)
+} else {
+  cat("No enrichment results found.\n")
+}
+```
+
+```{r enrichment-plots, results='asis'}
+enr_plot_dirs <- list.dirs(file.path(out, "enrichment", "plots"), recursive = FALSE)
+for (d in enr_plot_dirs) {
+  imgs <- list.files(d, pattern = "\\.png$", full.names = TRUE)
+  for (img in head(imgs, 6)) {
+    cat("\n")
+    knitr::include_graphics(img)
+    cat("\n\n")
+  }
+}
+```
+
+---
+
+```{r trajectory-section, results='asis', eval=params$run_traj}
+cat("# 4. Trajectory / Pseudotime\n\n")
+
+traj_dir <- file.path(out, "trajectory")
+pt_files <- list.files(traj_dir, pattern = "pseudotime.*\\.csv$", full.names = TRUE)
+
+if (length(pt_files) > 0) {
+  pt <- read.csv(pt_files[1])
+  cat("**Cells with pseudotime assigned:**", sum(!is.na(pt$pseudotime)), "\n\n")
+  kbl(head(pt, 20), digits = 3) %>%
+    kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE,
+                  font_size = 11)
+} else {
+  cat("Trajectory results not found.\n")
+}
+
+imgs <- list.files(file.path(traj_dir, "plots"), pattern = "\\.png$", full.names = TRUE)
+for (img in imgs) {
+  knitr::include_graphics(img)
+  cat("\n\n")
+}
+```
+
+---
+
+```{r comm-section, results='asis', eval=params$run_comm}
+cat("# 5. Cell-Cell Communication\n\n")
+
+comm_dir <- file.path(out, "cell_communication")
+lr_files <- list.files(comm_dir, pattern = "^lr_interactions.*\\.csv$", full.names = TRUE)
+
+for (f in lr_files) {
+  cond_name <- sub("lr_interactions_", "", sub("\\.csv$", "", basename(f)))
+  cat("**Condition:", cond_name, "**\n\n")
+  df <- read.csv(f)
+  cat("Interactions:", nrow(df), "\n\n")
+  kbl(head(df, 20)) %>%
+    kable_styling(bootstrap_options = c("striped","condensed"),
+                  full_width = FALSE, font_size = 10) %>%
+    print()
+  cat("\n\n")
+}
+
+comm_imgs <- list.files(file.path(comm_dir, "plots"), pattern = "\\.png$", full.names = TRUE)
+for (img in head(comm_imgs, 10)) {
+  knitr::include_graphics(img)
+  cat("\n\n")
+}
+```
+
+---
+
+# 6. Session Info
+
+```{r session-info}
+sessionInfo()
+```
+
+---
+
+```{r methods-draft, results='asis', eval=params$methods_draft}
+cat("# Appendix: Methods Draft\n\n")
+
+methods_text <- generate_methods_draft(params)
+cat(methods_text)
+
+# Save to file
+writeLines(methods_text, file.path(out, "methods_draft.md"))
+cat("\n\n*Methods draft saved to: output/methods_draft.md*\n")
+```
+
+```{r methods-fn, include=FALSE}
+generate_methods_draft <- function(p) {
+  sp_name   <- if (p$species == "human") "human" else "mouse"
+  sp_org    <- if (p$species == "human") "Homo sapiens" else "Mus musculus"
+  orgdb_pkg <- if (p$species == "human") "org.Hs.eg.db" else "org.Mm.eg.db"
+  kegg_code <- if (p$species == "human") "hsa" else "mmu"
+
+  traj_txt <- if (p$run_traj) {
+    "\n\n## Trajectory Analysis\nPseudotime analysis was performed using Monocle3 (Cao et al., 2019) or Slingshot (Street et al., 2018). Cells were embedded in UMAP space and trajectory graphs were constructed. Root cells were selected based on biological prior knowledge from cells identified as [ROOT_CELL_TYPE]. Pseudotime values were computed for each cell along each inferred lineage."
+  } else ""
+
+  comm_txt <- if (p$run_comm) {
+    "\n\n## Cell-Cell Communication\nCell-cell communication was inferred using CellChat (Jin et al., 2021). CellChatDB (species-specific) was used as the ligand-receptor interaction database. Communication probabilities were computed based on the law of mass action. Signaling pathways with significant communication probabilities (p < 0.05) were retained."
+  } else ""
+
+  glue::glue(
+"## Single-cell RNA-seq Downstream Analysis
+
+### Input Data
+Processed single-cell RNA-seq data was loaded as a Seurat object (Stuart et al., 2019) containing cells from {sp_name} ({sp_org}) samples.
+
+### Cell Type Composition
+Cell type proportions were calculated per sample and tested for differential composition between conditions using propeller (Phipson et al., 2022; R package: speckle). P-values were adjusted using the Benjamini-Hochberg procedure.
+
+### Pseudobulk Differential Expression
+Pseudobulk differential expression analysis was performed using DESeq2 (Love et al., 2014) / edgeR (Robinson et al., 2010). For each cell type, read counts were aggregated per sample to form pseudobulk profiles. Samples with fewer than [MIN_CELLS] cells per cell type were excluded. Differentially expressed genes were identified using a negative binomial generalized linear model. Genes with adjusted p-value < {p$padj_cutoff} and |log2 fold change| >= {p$log2fc_cutoff} were considered significant.
+
+### Gene Set Enrichment Analysis
+Gene ontology (GO) and KEGG pathway enrichment was performed using clusterProfiler (Wu et al., 2021; v4.x). Significant DE genes (adjusted p < {p$padj_cutoff}) were used as input. The OrgDb package {orgdb_pkg} was used for gene ID mapping (human) or org.Mm.eg.db (mouse). Enrichment terms with q-value < 0.2 were considered significant.
+{traj_txt}{comm_txt}
+
+### Software
+Analyses were performed in R (v4.3+) using Seurat (v5.x), DESeq2, edgeR, clusterProfiler, speckle, and Snakemake (v7.x) for workflow management.
+
+### References
+- Stuart T, et al. Cell. 2019.
+- Love MI, et al. Genome Biol. 2014.
+- Robinson MD, et al. Bioinformatics. 2010.
+- Wu T, et al. Innovation. 2021 (clusterProfiler).
+- Phipson B, et al. Nat Methods. 2022 (propeller).
+- Jin S, et al. Nat Commun. 2021 (CellChat).
+- Cao J, et al. Nature. 2019 (Monocle3).
+- Street K, et al. BMC Genomics. 2018 (Slingshot).
+",
+  .trim = FALSE)
+}
+```

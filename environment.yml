@@ -1,0 +1,65 @@
+name: scrnaseq-analysis
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  # Workflow
+  - snakemake>=7.32
+
+  # R base
+  - r-base>=4.3
+  - r-essentials
+
+  # Bioconductor core
+  - bioconductor-biocmanager
+  - bioconductor-deseq2
+  - bioconductor-edger
+  - bioconductor-limma
+  - bioconductor-singlecellexperiment
+  - bioconductor-scran
+  - bioconductor-scater
+  - bioconductor-clusterprofiler
+  - bioconductor-org.hs.eg.db
+  - bioconductor-org.mm.eg.db
+  - bioconductor-enrichplot
+  - bioconductor-dose
+
+  # CRAN packages
+  - r-seurat>=5.0
+  - r-seuratobject
+  - r-tidyverse
+  - r-ggplot2
+  - r-patchwork
+  - r-ggrepel
+  - r-scales
+  - r-rcolorbrewer
+  - r-viridis
+  - r-yaml
+  - r-optparse
+  - r-remotes
+  - r-rmarkdown
+  - r-knitr
+  - r-kableextra
+  - r-openxlsx
+  - r-pheatmap
+  - r-complexheatmap
+
+  # Python (for AnnData / h5ad support)
+  - python>=3.10
+  - anndata
+  - scanpy
+  - h5py
+
+  # Propeller (compositional) - via bioconductor
+  - bioconductor-speckle
+
+  # CellChat / NicheNet deps
+  - r-circlize
+  - r-ggalluvial
+  - r-igraph
+  - r-ggraph
+  - r-tidygraph
+  - r-cowplot
+  - r-ggpubr
+  - r-ggsignif

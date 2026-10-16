@@ -1,0 +1,23 @@
+# Experiment-specific configs (use configs/template/config.yml as base)
+configs/config_*.yml
+
+# Output data
+output/
+
+# Logs
+logs/
+
+# R session artifacts
+.Rhistory
+.RData
+.Rproj.user/
+
+# conda env
+.conda/
+
+# Claude Code project settings
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,66 @@
+# ============================================================
+# scRNA-seq 3rd Analysis Pipeline - Template Config
+# Copy to configs/config_<experiment>.yml and fill in values.
+# configs/config_*.yml is gitignored.
+# ============================================================
+
+# ── General ────────────────────────────────────────────────
+species: "human"          # "human" | "mouse"
+output_dir: "output"
+
+# DE cutoffs (top-level for consistency with bulk pipeline)
+padj_cutoff: 0.05
+log2fc_cutoff: 1.0
+
+# ── Single-cell input ──────────────────────────────────────
+single_cell:
+  input_path: ""            # path to .rds (Seurat) or .h5ad (AnnData)
+  input_format: "seurat"    # "seurat" | "anndata"
+  cell_type_column: "cell_type"
+  sample_column: "sample_id"
+  condition_column: "condition"
+  # List of cell types to include; null = all
+  cell_types: null
+  min_cells_per_group: 10   # minimum cells per sample×cell_type for pseudobulk
+
+# ── Pseudobulk DE ──────────────────────────────────────────
+de_analysis:
+  method: "DESeq2"          # "DESeq2" | "edgeR"
+  # Reference level for condition (leave empty to use first alphabetically)
+  reference_level: ""
+  # Additional covariates to include in the model (e.g. ["batch", "sex"])
+  covariates: []
+
+# ── Enrichment ─────────────────────────────────────────────
+enrichment:
+  go_ontologies: ["BP", "CC", "MF"]
+  run_kegg: true
+  pvalue_cutoff: 0.05
+  qvalue_cutoff: 0.2
+  min_gs_size: 10
+  max_gs_size: 500
+
+# ── Optional modules ───────────────────────────────────────
+optional_modules:
+  trajectory: false
+  cell_communication: true
+
+# ── Trajectory (Phase 4, optional) ────────────────────────
+trajectory:
+  method: "monocle3"        # "monocle3" | "slingshot"
+  # Starting cell type for root selection
+  root_cell_type: ""
+  # Starting cluster (within root_cell_type) - leave empty for manual selection
+  root_cluster: ""
+
+# ── Cell-Cell Communication (Phase 5, optional) ────────────
+cell_communication:
+  method: "CellChat"        # "CellChat" | "LIANA"
+  # Condition to use as "sender" context (leave empty = all conditions)
+  conditions_to_compare: []
+
+# ── Report ─────────────────────────────────────────────────
+report:
+  title: "scRNA-seq Analysis Report"
+  author: ""
+  generate_methods_draft: true
