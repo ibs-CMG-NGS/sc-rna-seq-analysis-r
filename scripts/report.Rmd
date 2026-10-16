@@ -224,17 +224,6 @@ sessionInfo()
 
 ---
 
-```{r methods-draft, results='asis', eval=params$methods_draft}
-cat("# Appendix: Methods Draft\n\n")
-
-methods_text <- generate_methods_draft(params)
-cat(methods_text)
-
-# Save to file
-writeLines(methods_text, file.path(out, "methods_draft.md"))
-cat("\n\n*Methods draft saved to: output/methods_draft.md*\n")
-```
-
 ```{r methods-fn, include=FALSE}
 generate_methods_draft <- function(p) {
   sp_name   <- if (p$species == "human") "human" else "mouse"
@@ -281,4 +270,16 @@ Analyses were performed in R (v4.3+) using Seurat (v5.x), DESeq2, edgeR, cluster
 ",
   .trim = FALSE)
 }
+```
+
+```{r methods-draft, results='asis', eval=params$methods_draft}
+cat("# Appendix: Methods Draft\n\n")
+
+methods_text <- generate_methods_draft(params)
+cat(methods_text)
+
+# Save to file
+dir.create(file.path(out, "report"), recursive = TRUE, showWarnings = FALSE)
+writeLines(methods_text, file.path(out, "report", "methods_draft.md"))
+cat("\n\n*Methods draft saved to: output/report/methods_draft.md*\n")
 ```
