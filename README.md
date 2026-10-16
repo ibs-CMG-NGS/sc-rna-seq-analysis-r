@@ -17,6 +17,29 @@ Seurat (`.rds`) 또는 AnnData (`.h5ad`) 형식을 입력으로 받아, 세포 �
 | 5 | **Cell-Cell Communication** *(선택)* | CellChat 또는 LIANA, 조건 간 비교 지원 |
 | 6 | **보고서** | R Markdown HTML 보고서, Methods 초안 (`methods_draft.md`) 자동 생성 |
 
+### Phase 0a — Label Transfer (optional, reference-map)
+
+`cell_type` 라벨이 없는 외부 데이터(예: HypoMap 같은 published scRNA-seq)를 위해 frozen reference model에 매핑하여 라벨을 보조한다 (`mapscvi` 패키지 사용). 설정: `optional_modules.label_transfer: true` 시 `load_input` 이전에 실행되며, 소요 시간은 세포 수·GPU 여부에 따라 증가한다.
+
+| 키 | 설명 |
+|---|---|
+| `label_transfer.method` | 현재 `mapscvi`만 지원 (HypoMap frozen scVI model) |
+| `label_transfer.label_column` | reference meta column (`C66_named` 또는 `C185_named`) |
+| `label_transfer.max_epochs` | scVI mapping epochs (10–20 권장) |
+
+<details><summary>설치·실행 안내 (클릭)</summary>
+
+```bash
+# 1) conda 환경에 scvi-tools 포함 후 활성화 (environment.yml 참조)
+conda activate scrnaseq-analysis
+# 2) mapscvi 설치 (R에서 remotes를 사용)
+Rscript scripts/install_mapscvi.R
+# 3) config에서 optional_modules.label_transfer: true 설정 후 실행
+```
+
+출력: `output/label_transfer/` 아래 `annotated.rds` (predicted + prediction_probability 반영, `cell_type` 컬럼이 없었던 경우에만 predictions로 채움) + `label_provenance.csv` (세포별 라벨·확률) + `label_provenance.yml` (모델 경로, 패키지 버전, input 형태 등 재현성 정보).
+</details>
+
 **bulk RNA-seq 파이프라인과의 일관성 유지:**
 - `configs/template/config.yml` (Git 추적) + `configs/config_*.yml` (gitignore)
 - `padj_cutoff`, `log2fc_cutoff` 최상위 레벨 키

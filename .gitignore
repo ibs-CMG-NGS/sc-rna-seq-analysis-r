@@ -12,6 +12,9 @@ logs/
 .RData
 .Rproj.user/
 
+# Snakemake working directory
+.snakemake/
+
 # conda env
 .conda/
 

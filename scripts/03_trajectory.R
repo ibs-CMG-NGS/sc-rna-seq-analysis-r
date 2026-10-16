@@ -128,7 +128,7 @@ run_slingshot <- function(obj, meta, ct_col, opt) {
   start_clus <- opt$root_cell_type
 
   sce <- SingleCellExperiment(
-    assays    = list(counts = GetAssayData(obj, slot = "counts")),
+    assays    = list(counts = GetAssayData(obj, layer = "counts")),
     reducedDims = list(UMAP = umap_emb)
   )
 

@@ -35,7 +35,15 @@ library(dplyr)
 library(ggplot2)
 library(kableExtra)
 
+# rmarkdown::render() sets the knit cwd to this file's directory (scripts/);
+# anchor all relative paths to the repo root so file.path(out, ...) resolves.
+repo_root <- normalizePath(file.path(getwd(), ".."), mustWork = TRUE)
+knitr::opts_knit$set(root.dir = repo_root)
+
 out <- params$output_dir
+
+# Absolute-path helper for figure embedding (pandoc cwd differs from knitr root.dir)
+inc <- function(path) cat(sprintf("![](%s)", normalizePath(path, mustWork = TRUE)))
 ```
 
 # Overview
@@ -43,9 +51,9 @@ out <- params$output_dir
 ```{r config-summary}
 tibble::tribble(
   ~Parameter, ~Value,
-  "Species",          params$species,
-  "padj cutoff",      params$padj_cutoff,
-  "log2FC cutoff",    params$log2fc_cutoff,
+  "Species",          as.character(params$species),
+  "padj cutoff",      as.character(params$padj_cutoff),
+  "log2FC cutoff",    as.character(params$log2fc_cutoff),
   "Trajectory",       as.character(params$run_traj),
   "Cell communication", as.character(params$run_comm)
 ) %>%
@@ -72,7 +80,7 @@ if (file.exists(comp_file)) {
 
 ```{r composition-plots}
 img <- file.path(out, "composition", "plots", "composition_bar.png")
-if (file.exists(img)) knitr::include_graphics(img)
+if (file.exists(img)) inc(img)
 ```
 
 ```{r propeller}
@@ -121,7 +129,7 @@ if (dir.exists(vol_dir)) {
   imgs <- list.files(vol_dir, pattern = "^volcano_.*\\.png$", full.names = TRUE)
   for (img in head(imgs, 20)) {
     cat("\n")
-    knitr::include_graphics(img)
+    inc(img)
     cat("\n\n")
   }
 }
@@ -156,7 +164,7 @@ for (d in enr_plot_dirs) {
   imgs <- list.files(d, pattern = "\\.png$", full.names = TRUE)
   for (img in head(imgs, 6)) {
     cat("\n")
-    knitr::include_graphics(img)
+    inc(img)
     cat("\n\n")
   }
 }
@@ -182,7 +190,7 @@ if (length(pt_files) > 0) {
 
 imgs <- list.files(file.path(traj_dir, "plots"), pattern = "\\.png$", full.names = TRUE)
 for (img in imgs) {
-  knitr::include_graphics(img)
+  inc(img)
   cat("\n\n")
 }
 ```
@@ -209,7 +217,7 @@ for (f in lr_files) {
 
 comm_imgs <- list.files(file.path(comm_dir, "plots"), pattern = "\\.png$", full.names = TRUE)
 for (img in head(comm_imgs, 10)) {
-  knitr::include_graphics(img)
+  inc(img)
   cat("\n\n")
 }
 ```

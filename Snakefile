@@ -14,6 +14,12 @@ OUTPUT     = config["output_dir"]
 OPTIONAL   = config.get("optional_modules", {})
 RUN_TRAJ   = OPTIONAL.get("trajectory", False)
 RUN_COMM   = OPTIONAL.get("cell_communication", True)
+RUN_LBL    = OPTIONAL.get("label_transfer", False)
+
+# Phase 0a: when enabled, load_input consumes the annotated object produced
+# by label transfer instead of the raw input.
+QUERY_INPUT = f"{OUTPUT}/label_transfer/annotated.rds" if RUN_LBL \
+              else config["single_cell"]["input_path"]
 
 
 # ── Helper: save config snapshot ──────────────────────────────────────────────
@@ -29,6 +35,7 @@ def save_config_snapshot(config, output_dir):
 # ── Target rule ───────────────────────────────────────────────────────────────
 rule all:
     input:
+        expand("{out}/label_transfer/label_transfer.flag", out=OUTPUT) if RUN_LBL else [],
         expand("{out}/pseudobulk_de/de_complete.flag",   out=OUTPUT),
         expand("{out}/composition/composition_complete.flag", out=OUTPUT),
         expand("{out}/enrichment/enrichment_complete.flag",   out=OUTPUT),
@@ -37,10 +44,51 @@ rule all:
         expand("{out}/report/report.html",                    out=OUTPUT),
 
 
+# ── Phase 0a: Label transfer (optional, v2.2) ────────────────────────────────
+if RUN_LBL:
+    rule label_transfer:
+        input:
+            data = config["single_cell"]["input_path"],
+        output:
+            rds  = f"{OUTPUT}/label_transfer/annotated.rds",
+            flag = f"{OUTPUT}/label_transfer/label_transfer.flag",
+        log:
+            f"logs/label_transfer.log",
+        params:
+            fmt        = config["single_cell"]["input_format"],
+            method     = config["label_transfer"]["method"],
+            label_col  = config["label_transfer"].get("label_column", "C66_named"),
+            max_epochs = config["label_transfer"].get("max_epochs", 20),
+            suffix     = config["label_transfer"].get("suffix", "query"),
+            ct_col     = config["single_cell"]["cell_type_column"],
+            prov_out   = f"{OUTPUT}/label_transfer/label_provenance.csv",
+        shell:
+            """
+            Rscript scripts/00_label_transfer.R \
+                --input          {input.data} \
+                --format         {params.fmt} \
+                --method         {params.method} \
+                --label_column   "{params.label_col}" \
+                --max_epochs     {params.max_epochs} \
+                --suffix         "{params.suffix}" \
+                --cell_type_col  "{params.ct_col}" \
+                --output_rds     {output.rds} \
+                --provenance_out {params.prov_out} \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+else:
+    rule label_transfer:
+        output:
+            flag = f"{OUTPUT}/label_transfer/label_transfer.flag",
+        shell:
+            "mkdir -p $(dirname {output.flag}) && touch {output.flag}"
+
+
 # ── Phase 1: Load & validate input ───────────────────────────────────────────
 rule load_input:
     input:
-        data = config["single_cell"]["input_path"],
+        data = QUERY_INPUT,
     output:
         rds  = f"{OUTPUT}/loaded/seurat_validated.rds",
         flag = f"{OUTPUT}/loaded/load_complete.flag",
@@ -53,6 +101,7 @@ rule load_input:
         condition_col  = config["single_cell"]["condition_column"],
         cell_types     = config["single_cell"].get("cell_types") or "null",
         min_cells      = config["single_cell"]["min_cells_per_group"],
+        counts_layer   = config["single_cell"].get("counts_layer", "counts"),
     shell:
         """
         Rscript scripts/input_loader.R \
@@ -63,6 +112,7 @@ rule load_input:
             --condition_col {params.condition_col} \
             --cell_types    "{params.cell_types}" \
             --min_cells     {params.min_cells} \
+            --counts_layer  {params.counts_layer} \
             --output_rds    {output.rds} \
             2>&1 | tee {log}
         touch {output.flag}
@@ -123,7 +173,6 @@ rule composition:
 rule enrichment:
     input:
         flag = rules.pseudobulk_de.output.flag,
-        de_dir = f"{OUTPUT}/pseudobulk_de",
     output:
         flag = f"{OUTPUT}/enrichment/enrichment_complete.flag",
     log:
@@ -136,11 +185,12 @@ rule enrichment:
         qval        = config["enrichment"]["qvalue_cutoff"],
         min_gs      = config["enrichment"].get("min_gs_size", 10),
         max_gs      = config["enrichment"].get("max_gs_size", 500),
+        de_dir      = f"{OUTPUT}/pseudobulk_de",
         output_dir  = f"{OUTPUT}/enrichment",
     shell:
         """
         Rscript scripts/02_enrichment.R \
-            --de_dir       {input.de_dir} \
+            --de_dir       {params.de_dir} \
             --species      {params.species} \
             --go_ontologies {params.go_onto} \
             --run_kegg     {params.run_kegg} \
@@ -246,7 +296,8 @@ rule report:
         """
         Rscript -e "rmarkdown::render(
             'scripts/report.Rmd',
-            output_file  = '../{output.html}',
+            output_dir   = 'output/report',
+            output_file  = 'report.html',
             params = list(
                 output_dir    = '{params.output_dir}',
                 title         = '{params.report_title}',

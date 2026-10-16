@@ -1,18 +1,25 @@
+# ============================================================
+# Version pin policy (v2.0):
+# - 대규모 인터페이스 breaking change가 예상되는 핵심 패키지만 상한(<) 지정
+# - 나머지는 하위 >= 유지, 환경 재구성 시 검증 후 상한을 조정할 것
+# - channel 순서 고정: conda-forge -> bioconda (defaults 금지)
+# ============================================================
 name: scrnaseq-analysis
 channels:
   - conda-forge
   - bioconda
+  - nodefaults
 
 dependencies:
   # Workflow
-  - snakemake>=7.32
+  - snakemake>=9,<10
 
   # R base
-  - r-base>=4.3
+  - r-base>=4.3,<4.6
   - r-essentials
 
   # Bioconductor core
-  - bioconductor-biocmanager
+  - r-biocmanager
   - bioconductor-deseq2
   - bioconductor-edger
   - bioconductor-limma
@@ -26,8 +33,8 @@ dependencies:
   - bioconductor-dose
 
   # CRAN packages
-  - r-seurat>=5.0
-  - r-seuratobject
+  - r-seurat>=5.0,<6
+  - r-seuratobject>=5.0,<6
   - r-tidyverse
   - r-ggplot2
   - r-patchwork
@@ -43,13 +50,15 @@ dependencies:
   - r-kableextra
   - r-openxlsx
   - r-pheatmap
-  - r-complexheatmap
+  - bioconductor-complexheatmap
 
   # Python (for AnnData / h5ad support)
-  - python>=3.10
-  - anndata
-  - scanpy
+  - python>=3.10,<3.13
+  - anndata>=0.10,<1.0
+  - scanpy>=1.10,<2.0
   - h5py
+  # scvi-tools (Phase 0a label transfer via mapscvi; requires >= 0.15)
+  - scvi-tools>=0.15,<2.0
 
   # Propeller (compositional) - via bioconductor
   - bioconductor-speckle

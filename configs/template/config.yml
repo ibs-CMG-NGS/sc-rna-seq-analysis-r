@@ -22,6 +22,7 @@ single_cell:
   # List of cell types to include; null = all
   cell_types: null
   min_cells_per_group: 10   # minimum cells per sample×cell_type for pseudobulk
+  counts_layer: "counts"    # AnnData layer holding raw counts (used only for .h5ad input)
 
 # ── Pseudobulk DE ──────────────────────────────────────────
 de_analysis:
@@ -44,6 +45,14 @@ enrichment:
 optional_modules:
   trajectory: false
   cell_communication: true
+  label_transfer: false
+
+# ── Phase 0a: Label transfer (optional, reference-map) ─────
+label_transfer:
+  method: "mapscvi"         # mapscvi only (HypoMap frozen scVI model)
+  label_column: "C66_named" # reference metadata column to project (HypoMap: C66_named | C185_named)
+  max_epochs: 20            # scVI mapping epochs
+  suffix: "query"           # internal suffix used by mapscvi
 
 # ── Trajectory (Phase 4, optional) ────────────────────────
 trajectory:

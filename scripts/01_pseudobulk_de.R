@@ -36,11 +36,38 @@ message("[pseudobulk_de] Loading: ", opt$input)
 obj <- readRDS(opt$input)
 
 meta    <- obj@meta.data
-ct_col  <- attr(obj, "cell_type_col")  %||% guess_col(meta, c("cell_type","celltype","CellType"))
-smp_col <- attr(obj, "sample_col")     %||% guess_col(meta, c("sample_id","sample","Sample"))
-cnd_col <- attr(obj, "condition_col")  %||% guess_col(meta, c("condition","Condition","group"))
 
-# Helper: pick first matching column name
+# ── Validate raw counts slot (v2.0) ──────────────────────────────────────────
+default_assay <- DefaultAssay(obj)
+counts_check <- tryCatch(
+  GetAssayData(obj, assay = default_assay, layer = "counts"),
+  error = function(e) e
+)
+if (inherits(counts_check, "error")) {
+  stop("[pseudobulk_de] 'counts' slot missing in default assay '", default_assay,
+       "': ", conditionMessage(counts_check),
+       "\n  Pseudobulk aggregation requires raw counts. Supply a Seurat object created from",
+       "\n  raw UMI counts (an annotated 2nd-analysis product, not a normalized-only object).",
+       call. = FALSE)
+}
+chk_vals <- if (inherits(counts_check, "dgCMatrix")) {
+  as.numeric(methods::slot(counts_check, "x"))
+} else {
+  as.numeric(counts_check[seq_len(min(2e6, length(counts_check)))])
+}
+if (length(chk_vals) == 0 || any(chk_vals < 0)) {
+  stop("[pseudobulk_de] counts slot is empty or contains negative values — cannot treat this object as raw counts.",
+       call. = FALSE)
+}
+frac_dev <- max(abs(chk_vals - round(chk_vals)))
+if (frac_dev > 1e-8) {
+  stop("[pseudobulk_de] counts slot contains non-integer values (max fractional deviation = ",
+       format(frac_dev, digits = 3), "). This appears to be a normalized/transformed matrix, not raw counts —",
+       "\n  aggregation would be invalid. Re-export the object with raw UMI counts in the counts slot.",
+       call. = FALSE)
+}
+message("[pseudobulk_de] Raw counts validation passed (assay: ", default_assay, ")")
+# Helper: pick first matching column name (must be defined before first use)
 `%||%` <- function(a, b) if (!is.null(a) && nchar(a) > 0) a else b
 
 guess_col <- function(meta, candidates) {
@@ -48,6 +75,10 @@ guess_col <- function(meta, candidates) {
   if (length(hit) == 0) stop("Cannot auto-detect column. Pass explicit column names.")
   hit[1]
 }
+
+ct_col  <- attr(obj, "cell_type_col")  %||% guess_col(meta, c("cell_type","celltype","CellType"))
+smp_col <- attr(obj, "sample_col")     %||% guess_col(meta, c("sample_id","sample","Sample"))
+cnd_col <- attr(obj, "condition_col")  %||% guess_col(meta, c("condition","Condition","group"))
 
 # Re-detect from metadata if attrs not set
 if (!exists("ct_col")  || is.null(ct_col))  ct_col  <- guess_col(meta, c("cell_type","celltype","CellType","cluster"))
@@ -73,61 +104,6 @@ if (nchar(opt$covariates) > 0) {
   if (length(missing_cov) > 0) stop("Covariates not in metadata: ", paste(missing_cov, collapse = ", "))
 }
 
-# ── Pseudobulk aggregation ────────────────────────────────────────────────────
-message("[pseudobulk_de] Aggregating pseudobulk counts per cell_type × sample...")
-
-cell_types <- sort(unique(meta[[ct_col]]))
-all_results <- list()
-
-for (ct in cell_types) {
-  message("  Processing: ", ct)
-  cells <- rownames(meta)[meta[[ct_col]] == ct]
-  sub   <- subset(obj, cells = cells)
-  sub_meta <- sub@meta.data
-
-  # Sum counts per sample
-  samples  <- sort(unique(sub_meta[[smp_col]]))
-  count_mx <- sapply(samples, function(s) {
-    s_cells <- rownames(sub_meta)[sub_meta[[smp_col]] == s]
-    if (length(s_cells) < 2) return(rep(NA_real_, nrow(sub)))
-    Matrix::rowSums(GetAssayData(sub, slot = "counts")[, s_cells, drop = FALSE])
-  })
-  colnames(count_mx) <- samples
-
-  # Remove samples with too few cells or NA
-  valid_samples <- samples[colSums(is.na(count_mx)) == 0]
-  count_mx <- count_mx[, valid_samples, drop = FALSE]
-
-  if (ncol(count_mx) < 2) {
-    warning("  Skipping ", ct, ": fewer than 2 valid samples after filtering.")
-    next
-  }
-
-  # Build colData
-  col_data <- sub_meta[!duplicated(sub_meta[[smp_col]]), , drop = FALSE]
-  rownames(col_data) <- col_data[[smp_col]]
-  col_data <- col_data[valid_samples, , drop = FALSE]
-  col_data[[cnd_col]] <- relevel(factor(col_data[[cnd_col]]), ref = ref_level)
-
-  # Model formula
-  formula_str <- paste("~", paste(c(covariates, cnd_col), collapse = " + "))
-  message("    Formula: ", formula_str)
-
-  tryCatch({
-    if (opt$method == "DESeq2") {
-      res_df <- run_deseq2(count_mx, col_data, formula_str, cnd_col, ref_level)
-    } else if (opt$method == "edgeR") {
-      res_df <- run_edger(count_mx, col_data, cnd_col, ref_level, covariates)
-    } else {
-      stop("Unknown method: ", opt$method)
-    }
-    res_df$cell_type <- ct
-    all_results[[ct]] <- res_df
-  }, error = function(e) {
-    warning("  Error processing ", ct, ": ", conditionMessage(e))
-  })
-}
-
 # ── DESeq2 ────────────────────────────────────────────────────────────────────
 run_deseq2 <- function(count_mx, col_data, formula_str, cnd_col, ref_level) {
   suppressPackageStartupMessages(library(DESeq2))
@@ -150,9 +126,7 @@ run_deseq2 <- function(count_mx, col_data, formula_str, cnd_col, ref_level) {
       rownames_to_column("gene") %>%
       mutate(contrast = cn)
   })
-  bind_rows(res_list) %>%
-    rename(log2FoldChange = log2FoldChange, padj = padj, pvalue = pvalue,
-           baseMean = baseMean, lfcSE = lfcSE, stat = stat)
+  bind_rows(res_list)
 }
 
 # ── edgeR ─────────────────────────────────────────────────────────────────────
@@ -184,6 +158,103 @@ run_edger <- function(count_mx, col_data, cnd_col, ref_level, covariates) {
   })
   bind_rows(res_list)
 }
+
+
+
+
+# ── Pseudobulk aggregation ────────────────────────────────────────────────────
+message("[pseudobulk_de] Aggregating pseudobulk counts per cell_type × sample...")
+
+cell_types <- sort(unique(meta[[ct_col]]))
+all_results <- list()
+export_counts <- list()
+export_meta   <- list()
+
+for (ct in cell_types) {
+  message("  Processing: ", ct)
+  cells <- rownames(meta)[meta[[ct_col]] == ct]
+  sub   <- subset(obj, cells = cells)
+  sub_meta <- sub@meta.data
+
+  # Sum counts per sample
+  samples  <- sort(unique(sub_meta[[smp_col]]))
+  count_mx <- sapply(samples, function(s) {
+    s_cells <- rownames(sub_meta)[sub_meta[[smp_col]] == s]
+    if (length(s_cells) < 2) return(rep(NA_real_, nrow(sub)))
+    Matrix::rowSums(GetAssayData(sub, layer = "counts")[, s_cells, drop = FALSE])
+  })
+  colnames(count_mx) <- samples
+
+  # Remove samples with too few cells or NA
+  valid_samples <- samples[colSums(is.na(count_mx)) == 0]
+  count_mx <- count_mx[, valid_samples, drop = FALSE]
+
+  if (ncol(count_mx) < 2) {
+    warning("  Skipping ", ct, ": fewer than 2 valid samples after filtering.")
+    next
+  }
+
+  # Build colData
+  col_data <- sub_meta[!duplicated(sub_meta[[smp_col]]), , drop = FALSE]
+  rownames(col_data) <- col_data[[smp_col]]
+  col_data <- col_data[valid_samples, , drop = FALSE]
+  col_data[[cnd_col]] <- relevel(factor(col_data[[cnd_col]]), ref = ref_level)
+
+  # Register pseudobulk artifact (exported below, before DE results are built)
+  export_counts[[ct]] <- count_mx
+  export_row_data        <- col_data
+  export_row_data$cell_type <- ct
+  export_meta[[ct]]   <- export_row_data
+
+  # Model formula
+  formula_str <- paste("~", paste(c(covariates, cnd_col), collapse = " + "))
+  message("    Formula: ", formula_str)
+
+  tryCatch({
+    if (opt$method == "DESeq2") {
+      res_df <- run_deseq2(count_mx, col_data, formula_str, cnd_col, ref_level)
+    } else if (opt$method == "edgeR") {
+      res_df <- run_edger(count_mx, col_data, cnd_col, ref_level, covariates)
+    } else {
+      stop("Unknown method: ", opt$method)
+    }
+    res_df$cell_type <- ct
+    all_results[[ct]] <- res_df
+  }, error = function(e) {
+    warning("  Error processing ", ct, ": ", conditionMessage(e))
+  })
+}
+
+# ── Pseudobulk artifact export (v2.0) ────────────────────────────────────────
+if (length(export_counts) > 0) {
+  merged_cols <- lapply(names(export_counts), function(ct) {
+    m <- as(export_counts[[ct]], "dgCMatrix")
+    colnames(m) <- paste0(ct, "__", colnames(m))
+    m
+  })
+  merged_counts <- do.call(cbind, merged_cols)
+  saveRDS(
+    list(counts = merged_counts, col_data = export_meta),
+    file = file.path(opt$output_dir, "pseudobulk_counts.rds")
+  )
+  message("[pseudobulk_de] Pseudobulk count matrix (genes x cell_type__sample) saved to pseudobulk_counts.rds")
+
+  n_elements <- nrow(merged_counts) * ncol(merged_counts)
+  if (n_elements <= 5e8) {
+    utils::write.table(
+      as.matrix(merged_counts),
+      file      = file.path(opt$output_dir, "pseudobulk_counts.tsv"),
+      quote     = FALSE,
+      sep       = "\t",
+      col.names = NA
+    )
+    message("[pseudobulk_de] Plain-text copy saved to pseudobulk_counts.tsv")
+  } else {
+    message("[pseudobulk_de] Matrix too large for TSV export (", n_elements,
+            " elements); skipped - use the .rds artifact.")
+  }
+}
+
 
 # ── Save results ──────────────────────────────────────────────────────────────
 if (length(all_results) == 0) stop("No cell types produced DE results.")
