@@ -34,35 +34,37 @@ if (is.null(opt$input))      stop("--input is required")
 if (is.null(opt$output_rds)) stop("--output_rds is required")
 
 # ── AnnData helpers (v2.0: raw counts priority + sparse matrix support) ───────
-py_is_null <- function(x) {
-  is.null(x) || inherits(x, "python.builtin.NoneType")
-}
+# NOTE: reticulate auto-converts scipy sparse matrices to R Matrix objects, and
+# that converter is unreliable for non-double dtypes (e.g. int32 UMI counts) —
+# it errors with "'x' slot is not of type double". So we never let a sparse
+# object cross into R: source selection + CSR extraction happen inside Python
+# and only plain numpy arrays (shape/indptr/indices/data) are returned.
+ANNDATA_HELPER <- "
+import numpy as _np
+import scipy.sparse as _sp
 
-# Convert a scipy sparse matrix proxy (reticulate) to Matrix::dgCMatrix.
-# scipy stores 0-based indices/indptr — identical convention to Matrix slots.
-py_sparse_to_dgc <- function(sp) {
-  if (identical(sp$format, "csr")) sp <- sp$tocsc()
-  new(
-    "dgCMatrix",
-    i   = as.integer(reticulate::py_to_r(sp$indices)),
-    p   = as.integer(reticulate::py_to_r(sp$indptr)),
-    x   = as.numeric(reticulate::py_to_r(sp$data)),
-    Dim = as.integer(reticulate::py_to_r(sp$shape))
-  )
-}
-
-coerce_count_matrix <- function(m) {
-  if (inherits(m, c("dgCMatrix", "matrix", "Matrix"))) return(m)
-  py_sparse_to_dgc(m)
-}
-
-mat_values <- function(m, max_n = 2e6) {
-  if (inherits(m, "dgCMatrix")) {
-    as.numeric(methods::slot(m, "x"))
-  } else {
-    as.numeric(m[seq_len(min(max_n, length(m)))])
-  }
-}
+def scran_extract_counts(adata, layer_name):
+    if layer_name in adata.layers:
+        m = adata.layers[layer_name]
+        src = \"layers['%s']\" % layer_name
+    elif adata.raw is not None and adata.raw.X is not None:
+        m = adata.raw.X
+        src = 'raw$X'
+    else:
+        m = adata.X
+        src = 'X'
+    if hasattr(m, 'tocsr'):
+        m = m.tocsr()
+    else:
+        m = _sp.csr_matrix(_np.asarray(m))
+    return {
+        'src': src,
+        'shape': _np.asarray(m.shape, dtype=_np.int64),      # (cells, genes)
+        'indptr': _np.asarray(m.indptr, dtype=_np.int64),
+        'indices': _np.asarray(m.indices, dtype=_np.int64),
+        'data': _np.asarray(m.data, dtype=_np.float64),
+    }
+"
 
 looks_like_counts <- function(vals) {
   length(vals) > 0 && all(vals >= 0) && max(abs(vals - round(vals))) <= 1e-8
@@ -70,38 +72,36 @@ looks_like_counts <- function(vals) {
 
 # Extract gene × cell raw counts from an AnnData object.
 # Source priority: explicit layer ("counts") -> adata.raw$X -> adata$X.
-# The chosen source must be integer-valued (raw UMI counts) or we stop.
+# The CSR of a cells×genes matrix has the exact storage layout of a
+# genes×cells dgCMatrix (indptr = cell pointers, indices = gene indices), so
+# Dim is flipped in place — no explicit transpose is needed or used.
 read_anndata_counts <- function(adata, layer_name) {
-  var_names <- as.character(reticulate::py_to_r(adata$var_names))
-  obs_names <- as.character(reticulate::py_to_r(adata$obs_names))
+  var_names <- as.character(adata$var_names$to_numpy())
+  obs_names <- as.character(adata$obs_names$to_numpy())
 
-  src <- "X"
-  layer_val <- tryCatch(adata$layers$get(layer_name), error = function(e) NULL)
-  if (!py_is_null(layer_val)) {
-    cm  <- coerce_count_matrix(layer_val)
-    src <- paste0("layers[['", layer_name, "']]")
-  } else if (!py_is_null(adata$raw) && !py_is_null(adata$raw$X)) {
-    cm  <- coerce_count_matrix(adata$raw$X)
-    src <- "raw$X"
-  } else {
-    cm <- coerce_count_matrix(adata$X)
-  }
+  parts  <- reticulate::py$scran_extract_counts(adata, layer_name)
+  shape  <- as.integer(parts$shape)                 # c(cells, genes)
 
-  vals <- mat_values(cm)
-  if (!looks_like_counts(vals)) {
+  counts <- new(
+    "dgCMatrix",
+    i   = as.integer(parts$indices),
+    p   = as.integer(parts$indptr),
+    x   = as.numeric(parts$data),
+    Dim = shape[c(2, 1)]                            # genes × cells
+  )
+  rownames(counts) <- var_names
+  colnames(counts) <- obs_names
+
+  if (!looks_like_counts(as.numeric(methods::slot(counts, "x")))) {
     stop(
-      "[input_loader] Selected counts source (", src, ") does not look like raw integer UMI counts.\n",
+      "[input_loader] Selected counts source (", parts$src, ") does not look like raw integer UMI counts.\n",
       "  The matrix appears normalized/log-transformed — pseudobulk aggregation would be invalid.\n",
       "  Re-export the .h5ad with a '", layer_name, "' layer or with raw counts in adata.raw$X.",
       call. = FALSE
     )
   }
 
-  # AnnData stores cells × genes; Seurat expects genes × cells.
-  counts <- Matrix::t(cm)
-  rownames(counts) <- var_names
-  colnames(counts) <- obs_names
-  message("[input_loader] Counts source: ", src,
+  message("[input_loader] Counts source: ", parts$src,
           " (", nrow(counts), " genes x ", ncol(counts), " cells)")
   counts
 }
@@ -117,6 +117,7 @@ if (opt$format == "seurat") {
 
 } else if (opt$format == "anndata") {
   suppressPackageStartupMessages(library(reticulate))
+  reticulate::py_run_string(ANNDATA_HELPER)
   ad    <- reticulate::import("anndata")
 
   adata  <- ad$read_h5ad(opt$input)
