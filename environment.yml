@@ -64,6 +64,10 @@ dependencies:
   # Propeller (compositional) - via bioconductor
   - bioconductor-speckle
 
+  # Trajectory / pseudotime (optional module)
+  - r-monocle3
+  - bioconductor-slingshot
+
   # CellChat / NicheNet deps
   - r-circlize
   - r-ggalluvial
