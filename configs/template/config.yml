@@ -41,6 +41,14 @@ enrichment:
   min_gs_size: 10
   max_gs_size: 500
 
+# ── cmg-seqviewer handoff export (Track B, E1) ─────────────
+# Producer-side export of DE / GO·KEGG results as parquet bundles that
+# cmg-seqviewer (or any table-based viewer) can consume. The viewer never
+# reads Seurat/.h5ad objects directly.
+export_seqviewer:
+  enabled: true
+  schema_version: "1.0"
+
 # ── Optional modules ───────────────────────────────────────
 optional_modules:
   trajectory: false

@@ -50,6 +50,7 @@ dependencies:
   - r-kableextra
   - r-openxlsx
   - r-pheatmap
+  - r-arrow
   - bioconductor-complexheatmap
 
   # Python (for AnnData / h5ad support)

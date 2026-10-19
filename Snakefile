@@ -15,6 +15,7 @@ OPTIONAL   = config.get("optional_modules", {})
 RUN_TRAJ   = OPTIONAL.get("trajectory", False)
 RUN_COMM   = OPTIONAL.get("cell_communication", True)
 RUN_LBL    = OPTIONAL.get("label_transfer", False)
+RUN_EXPORT = config.get("export_seqviewer", {}).get("enabled", True)
 
 # Phase 0a: when enabled, load_input consumes the annotated object produced
 # by label transfer instead of the raw input.
@@ -41,6 +42,7 @@ rule all:
         expand("{out}/enrichment/enrichment_complete.flag",   out=OUTPUT),
         expand("{out}/trajectory/trajectory_complete.flag",   out=OUTPUT) if RUN_TRAJ else [],
         expand("{out}/cell_communication/comm_complete.flag", out=OUTPUT) if RUN_COMM else [],
+        expand("{out}/export/seqviewer/export_complete.flag",  out=OUTPUT) if RUN_EXPORT else [],
         expand("{out}/report/report.html",                    out=OUTPUT),
 
 
@@ -270,6 +272,40 @@ else:
             "mkdir -p $(dirname {output.flag}) && touch {output.flag}"
 
 
+# ── Phase 7: cmg-seqviewer handoff export (Track B, E1) ───────────────────────
+if RUN_EXPORT:
+    rule export_seqviewer:
+        input:
+            de_flag  = rules.pseudobulk_de.output.flag,
+            enr_flag = rules.enrichment.output.flag,
+        output:
+            index = f"{OUTPUT}/export/seqviewer/export_index.tsv",
+            flag  = f"{OUTPUT}/export/seqviewer/export_complete.flag",
+        log:
+            "logs/export_seqviewer.log",
+        params:
+            de_dir         = f"{OUTPUT}/pseudobulk_de",
+            enrichment_dir = f"{OUTPUT}/enrichment",
+            output_dir     = f"{OUTPUT}/export/seqviewer",
+            schema_version = config.get("export_seqviewer", {}).get("schema_version", "1.0"),
+        shell:
+            """
+            Rscript scripts/06_export_seqviewer.R \
+                --de_dir         {params.de_dir} \
+                --enrichment_dir {params.enrichment_dir} \
+                --output_dir     {params.output_dir} \
+                --schema_version {params.schema_version} \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+else:
+    rule export_seqviewer:
+        output:
+            flag = f"{OUTPUT}/export/seqviewer/export_complete.flag",
+        shell:
+            "mkdir -p $(dirname {output.flag}) && touch {output.flag}"
+
+
 # ── Phase 6: Report ───────────────────────────────────────────────────────────
 rule report:
     input:
@@ -284,6 +320,7 @@ rule report:
         f"logs/report.log",
     params:
         output_dir       = f"{OUTPUT}",
+        report_dir       = f"{OUTPUT}/report",
         report_title     = config["report"]["title"],
         author           = config["report"].get("author", ""),
         methods_draft    = str(config["report"].get("generate_methods_draft", True)).upper(),
@@ -296,7 +333,7 @@ rule report:
         """
         Rscript -e "rmarkdown::render(
             'scripts/report.Rmd',
-            output_dir   = 'output/report',
+            output_dir   = '{params.report_dir}',
             output_file  = 'report.html',
             params = list(
                 output_dir    = '{params.output_dir}',
