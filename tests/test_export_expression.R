@@ -148,4 +148,38 @@ check(isTRUE(all.equal(row$n_cells[1], length(idx))), "by_dataset n_cells matche
 check(isTRUE(all.equal(row$mean_expression[1], mean(log1p(counts)["Gene001", idx]),
                        tolerance = 1e-10)), "by_dataset mean matches recomputation")
 
+# --- viewer bundle ----------------------------------------------------------
+cat("[viewer bundle]\n")
+bundle <- file.path(tmp, "bundle")
+log <- file.path(tmp, "bundle.log")
+status <- system2("Rscript",
+  c(file.path(root, "scripts", "08_build_viewer_bundle.R"),
+    "--export_dir", out1,
+    "--bundle_dir", bundle,
+    "--prefix", "fixture",
+    "--alias", "Fixture_expression",
+    "--cell_type_level", "test",
+    "--fallback_multi_group", "TRUE"),
+  stdout = log, stderr = log)
+if (status != 0) {
+  cat(readLines(log), sep = "\n")
+  stop("bundle build failed")
+}
+mf_b <- fromJSON(file.path(bundle, "seqviewer_manifest.json"))
+check(mf_b$datasets$dataset_type == "expression_summary", "bundle dataset_type")
+check(mf_b$datasets$expression_schema$layout == "wide", "bundle layout is wide")
+check(mf_b$datasets$expression_schema$pct_scale == "0-100", "bundle declares pct_scale 0-100")
+check(mf_b$datasets$file_path == "fixture_wide_mean.parquet",
+      "bundle file_path is a bare filename")
+cf <- unlist(mf_b$datasets$expression_schema$companion_files)
+check(all(file.exists(file.path(bundle, "datasets", cf))),
+      "bundle companion files exist")
+wb <- read_parquet(file.path(bundle, "datasets", "fixture_wide_mean.parquet"))
+check(identical(names(wb)[1:2], c("gene_id", "gene_name")),
+      "bundle wide starts with gene_id, gene_name")
+mg <- read_parquet(file.path(bundle, "datasets", "fixture_wide_mean_multi_group.parquet"))
+check(!"gene_name" %in% names(mg), "multi_group fallback excludes gene_name")
+check(file.exists(file.path(bundle, "seqviewer_manifest.multi_group.json")),
+      "multi_group fallback manifest exists")
+
 cat("\nPASS test_export_expression\n")
