@@ -19,6 +19,10 @@ params:
   species:       "human"
   run_traj:      FALSE
   run_comm:      TRUE
+  run_de:        TRUE
+  run_comp:      TRUE
+  run_enr:       TRUE
+  run_explore:   FALSE
   methods_draft: TRUE
 ---
 
@@ -42,6 +46,10 @@ knitr::opts_knit$set(root.dir = repo_root)
 
 out <- params$output_dir
 
+# Sequential section numbering (skips disabled modules)
+sec <- 0
+next_sec <- function() { sec <<- sec + 1; sec }
+
 # Absolute-path helper for figure embedding (pandoc cwd differs from knitr root.dir)
 inc <- function(path) cat(sprintf("![](%s)", normalizePath(path, mustWork = TRUE)))
 ```
@@ -54,6 +62,10 @@ tibble::tribble(
   "Species",          as.character(params$species),
   "padj cutoff",      as.character(params$padj_cutoff),
   "log2FC cutoff",    as.character(params$log2fc_cutoff),
+  "Pseudobulk DE",    as.character(params$run_de),
+  "Composition",      as.character(params$run_comp),
+  "Enrichment",       as.character(params$run_enr),
+  "Exploration",      as.character(params$run_explore),
   "Trajectory",       as.character(params$run_traj),
   "Cell communication", as.character(params$run_comm)
 ) %>%
@@ -63,7 +75,7 @@ tibble::tribble(
 
 ---
 
-# 1. Cell Type Composition
+`r if (params$run_comp) paste0("# ", next_sec(), ". Cell Type Composition")`
 
 ```{r composition}
 comp_file <- file.path(out, "composition", "cell_type_proportions.csv")
@@ -99,7 +111,7 @@ if (file.exists(prop_file)) {
 
 ---
 
-# 2. Pseudobulk Differential Expression
+`r if (params$run_de) paste0("# ", next_sec(), ". Pseudobulk Differential Expression")`
 
 ```{r de-summary}
 de_file <- file.path(out, "pseudobulk_de", "de_significant.csv")
@@ -137,7 +149,7 @@ if (dir.exists(vol_dir)) {
 
 ---
 
-# 3. Enrichment Analysis
+`r if (params$run_enr) paste0("# ", next_sec(), ". Enrichment Analysis")`
 
 ```{r enrichment-summary}
 enr_dir <- file.path(out, "enrichment")
@@ -172,8 +184,32 @@ for (d in enr_plot_dirs) {
 
 ---
 
+```{r exploration-section, results='asis', eval=params$run_explore}
+cat(paste0("# ", next_sec(), ". Exploratory Gene Expression\n\n"))
+
+expl_dir <- file.path(out, "exploration")
+top_file <- file.path(expl_dir, "top_celltypes.csv")
+if (file.exists(top_file)) {
+  top <- read.csv(top_file)
+  cat("**Top cell types per gene (ranked by mean expression):**\n\n")
+  kbl(head(top, 40), digits = 3,
+      caption = "Top cell types per gene") %>%
+    kable_styling(bootstrap_options = c("striped","hover","condensed"),
+                  full_width = FALSE, font_size = 11)
+} else {
+  cat("Exploration results not found.\n")
+}
+
+for (img in c("heatmap_top_celltypes.png", "dotplot.png")) {
+  p <- file.path(expl_dir, "plots", img)
+  if (file.exists(p)) { cat("\n"); inc(p); cat("\n\n") }
+}
+```
+
+---
+
 ```{r trajectory-section, results='asis', eval=params$run_traj}
-cat("# 4. Trajectory / Pseudotime\n\n")
+cat(paste0("# ", next_sec(), ". Trajectory / Pseudotime\n\n"))
 
 traj_dir <- file.path(out, "trajectory")
 pt_files <- list.files(traj_dir, pattern = "pseudotime.*\\.csv$", full.names = TRUE)
@@ -198,7 +234,7 @@ for (img in imgs) {
 ---
 
 ```{r comm-section, results='asis', eval=params$run_comm}
-cat("# 5. Cell-Cell Communication\n\n")
+cat(paste0("# ", next_sec(), ". Cell-Cell Communication\n\n"))
 
 comm_dir <- file.path(out, "cell_communication")
 lr_files <- list.files(comm_dir, pattern = "^lr_interactions.*\\.csv$", full.names = TRUE)
@@ -224,7 +260,7 @@ for (img in head(comm_imgs, 10)) {
 
 ---
 
-# 6. Session Info
+# `r next_sec()`. Session Info
 
 ```{r session-info}
 sessionInfo()
@@ -239,6 +275,22 @@ generate_methods_draft <- function(p) {
   orgdb_pkg <- if (p$species == "human") "org.Hs.eg.db" else "org.Mm.eg.db"
   kegg_code <- if (p$species == "human") "hsa" else "mmu"
 
+  comp_txt <- if (p$run_comp) {
+    "\n\n### Cell Type Composition\nCell type proportions were calculated per sample and tested for differential composition between conditions using propeller (Phipson et al., 2022; R package: speckle). P-values were adjusted using the Benjamini-Hochberg procedure."
+  } else ""
+
+  de_txt <- if (p$run_de) {
+    glue::glue("\n\n### Pseudobulk Differential Expression\nPseudobulk differential expression analysis was performed using DESeq2 (Love et al., 2014) / edgeR (Robinson et al., 2010). For each cell type, read counts were aggregated per sample to form pseudobulk profiles. Samples with fewer than [MIN_CELLS] cells per cell type were excluded. Differentially expressed genes were identified using a negative binomial generalized linear model. Genes with adjusted p-value < {p$padj_cutoff} and |log2 fold change| >= {p$log2fc_cutoff} were considered significant.")
+  } else ""
+
+  enr_txt <- if (p$run_enr) {
+    glue::glue("\n\n### Gene Set Enrichment Analysis\nGene ontology (GO) and KEGG pathway enrichment was performed using clusterProfiler (Wu et al., 2021; v4.x). Significant DE genes (adjusted p < {p$padj_cutoff}) were used as input. The OrgDb package {orgdb_pkg} was used for gene ID mapping (human) or org.Mm.eg.db (mouse). Enrichment terms with q-value < 0.2 were considered significant.")
+  } else ""
+
+  expl_txt <- if (p$run_explore) {
+    "\n\n### Exploratory Gene Expression\nExpression of a predefined gene panel was summarized per cell type on the annotated object. For each gene and cell type, the number of cells, percentage of expressing cells (raw count > 0), mean normalized expression, and mean raw count were reported. Cell types with fewer than the configured minimum number of cells were excluded. No differential testing was performed; results are descriptive."
+  } else ""
+
   traj_txt <- if (p$run_traj) {
     "\n\n## Trajectory Analysis\nPseudotime analysis was performed using Monocle3 (Cao et al., 2019) or Slingshot (Street et al., 2018). Cells were embedded in UMAP space and trajectory graphs were constructed. Root cells were selected based on biological prior knowledge from cells identified as [ROOT_CELL_TYPE]. Pseudotime values were computed for each cell along each inferred lineage."
   } else ""
@@ -252,16 +304,7 @@ generate_methods_draft <- function(p) {
 
 ### Input Data
 Processed single-cell RNA-seq data was loaded as a Seurat object (Stuart et al., 2019) containing cells from {sp_name} ({sp_org}) samples.
-
-### Cell Type Composition
-Cell type proportions were calculated per sample and tested for differential composition between conditions using propeller (Phipson et al., 2022; R package: speckle). P-values were adjusted using the Benjamini-Hochberg procedure.
-
-### Pseudobulk Differential Expression
-Pseudobulk differential expression analysis was performed using DESeq2 (Love et al., 2014) / edgeR (Robinson et al., 2010). For each cell type, read counts were aggregated per sample to form pseudobulk profiles. Samples with fewer than [MIN_CELLS] cells per cell type were excluded. Differentially expressed genes were identified using a negative binomial generalized linear model. Genes with adjusted p-value < {p$padj_cutoff} and |log2 fold change| >= {p$log2fc_cutoff} were considered significant.
-
-### Gene Set Enrichment Analysis
-Gene ontology (GO) and KEGG pathway enrichment was performed using clusterProfiler (Wu et al., 2021; v4.x). Significant DE genes (adjusted p < {p$padj_cutoff}) were used as input. The OrgDb package {orgdb_pkg} was used for gene ID mapping (human) or org.Mm.eg.db (mouse). Enrichment terms with q-value < 0.2 were considered significant.
-{traj_txt}{comm_txt}
+{comp_txt}{de_txt}{enr_txt}{expl_txt}{traj_txt}{comm_txt}
 
 ### Software
 Analyses were performed in R (v4.3+) using Seurat (v5.x), DESeq2, edgeR, clusterProfiler, speckle, and Snakemake (v7.x) for workflow management.

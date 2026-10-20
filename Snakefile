@@ -17,6 +17,20 @@ RUN_COMM   = OPTIONAL.get("cell_communication", True)
 RUN_LBL    = OPTIONAL.get("label_transfer", False)
 RUN_EXPORT = config.get("export_seqviewer", {}).get("enabled", True)
 
+# Core module toggles (default: keep previous behaviour = all on)
+MODULES    = config.get("modules", {})
+RUN_DE     = MODULES.get("pseudobulk_de", True)
+RUN_COMP   = MODULES.get("composition", True)
+RUN_ENR    = MODULES.get("enrichment", True)
+# Exploratory gene-panel expression (works without replicates).
+# Either optional_modules.exploration or exploration.enabled enables it.
+RUN_EXPLORE = bool(OPTIONAL.get("exploration", False) or
+                   config.get("exploration", {}).get("enabled", False))
+RUN_EXPR_EXPORT = config.get("expression_export", {}).get("enabled", False)
+if RUN_ENR and not RUN_DE:
+    raise ValueError("modules.enrichment requires modules.pseudobulk_de; "
+                     "set modules.enrichment: false")
+
 # Phase 0a: when enabled, load_input consumes the annotated object produced
 # by label transfer instead of the raw input.
 QUERY_INPUT = f"{OUTPUT}/label_transfer/annotated.rds" if RUN_LBL \
@@ -37,9 +51,11 @@ def save_config_snapshot(config, output_dir):
 rule all:
     input:
         expand("{out}/label_transfer/label_transfer.flag", out=OUTPUT) if RUN_LBL else [],
-        expand("{out}/pseudobulk_de/de_complete.flag",   out=OUTPUT),
-        expand("{out}/composition/composition_complete.flag", out=OUTPUT),
-        expand("{out}/enrichment/enrichment_complete.flag",   out=OUTPUT),
+        expand("{out}/pseudobulk_de/de_complete.flag",   out=OUTPUT) if RUN_DE else [],
+        expand("{out}/composition/composition_complete.flag", out=OUTPUT) if RUN_COMP else [],
+        expand("{out}/enrichment/enrichment_complete.flag",   out=OUTPUT) if RUN_ENR else [],
+        expand("{out}/exploration/exploration_complete.flag", out=OUTPUT) if RUN_EXPLORE else [],
+        expand("{out}/export/expression/expression_complete.flag", out=OUTPUT) if RUN_EXPR_EXPORT else [],
         expand("{out}/trajectory/trajectory_complete.flag",   out=OUTPUT) if RUN_TRAJ else [],
         expand("{out}/cell_communication/comm_complete.flag", out=OUTPUT) if RUN_COMM else [],
         expand("{out}/export/seqviewer/export_complete.flag",  out=OUTPUT) if RUN_EXPORT else [],
@@ -122,88 +138,109 @@ rule load_input:
 
 
 # ── Phase 2a: Pseudobulk DE ───────────────────────────────────────────────────
-rule pseudobulk_de:
-    input:
-        rds  = rules.load_input.output.rds,
-    output:
-        flag = f"{OUTPUT}/pseudobulk_de/de_complete.flag",
-    log:
-        f"logs/pseudobulk_de.log",
-    params:
-        method      = config["de_analysis"]["method"],
-        ref_level   = config["de_analysis"].get("reference_level", ""),
-        covariates  = ",".join(config["de_analysis"].get("covariates", [])),
-        padj        = config["padj_cutoff"],
-        log2fc      = config["log2fc_cutoff"],
-        output_dir  = f"{OUTPUT}/pseudobulk_de",
-    shell:
-        """
-        Rscript scripts/01_pseudobulk_de.R \
-            --input        {input.rds} \
-            --method       {params.method} \
-            --ref_level    "{params.ref_level}" \
-            --covariates   "{params.covariates}" \
-            --padj_cutoff  {params.padj} \
-            --log2fc_cutoff {params.log2fc} \
-            --output_dir   {params.output_dir} \
-            2>&1 | tee {log}
-        touch {output.flag}
-        """
+if RUN_DE:
+    rule pseudobulk_de:
+        input:
+            rds  = rules.load_input.output.rds,
+        output:
+            flag = f"{OUTPUT}/pseudobulk_de/de_complete.flag",
+        log:
+            f"logs/pseudobulk_de.log",
+        params:
+            method      = config["de_analysis"]["method"],
+            ref_level   = config["de_analysis"].get("reference_level", ""),
+            covariates  = ",".join(config["de_analysis"].get("covariates", [])),
+            padj        = config["padj_cutoff"],
+            log2fc      = config["log2fc_cutoff"],
+            output_dir  = f"{OUTPUT}/pseudobulk_de",
+        shell:
+            """
+            Rscript scripts/01_pseudobulk_de.R \
+                --input        {input.rds} \
+                --method       {params.method} \
+                --ref_level    "{params.ref_level}" \
+                --covariates   "{params.covariates}" \
+                --padj_cutoff  {params.padj} \
+                --log2fc_cutoff {params.log2fc} \
+                --output_dir   {params.output_dir} \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+else:
+    rule pseudobulk_de:
+        output:
+            flag = f"{OUTPUT}/pseudobulk_de/de_complete.flag",
+        shell:
+            "mkdir -p $(dirname {output.flag}) && touch {output.flag}"
 
 
 # ── Phase 2b: Compositional analysis ─────────────────────────────────────────
-rule composition:
-    input:
-        rds  = rules.load_input.output.rds,
-    output:
-        flag = f"{OUTPUT}/composition/composition_complete.flag",
-    log:
-        f"logs/composition.log",
-    params:
-        output_dir = f"{OUTPUT}/composition",
-    shell:
-        """
-        Rscript scripts/01b_composition.R \
-            --input      {input.rds} \
-            --output_dir {params.output_dir} \
-            2>&1 | tee {log}
-        touch {output.flag}
-        """
+if RUN_COMP:
+    rule composition:
+        input:
+            rds  = rules.load_input.output.rds,
+        output:
+            flag = f"{OUTPUT}/composition/composition_complete.flag",
+        log:
+            f"logs/composition.log",
+        params:
+            output_dir = f"{OUTPUT}/composition",
+        shell:
+            """
+            Rscript scripts/01b_composition.R \
+                --input      {input.rds} \
+                --output_dir {params.output_dir} \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+else:
+    rule composition:
+        output:
+            flag = f"{OUTPUT}/composition/composition_complete.flag",
+        shell:
+            "mkdir -p $(dirname {output.flag}) && touch {output.flag}"
 
 
 # ── Phase 3: Enrichment ───────────────────────────────────────────────────────
-rule enrichment:
-    input:
-        flag = rules.pseudobulk_de.output.flag,
-    output:
-        flag = f"{OUTPUT}/enrichment/enrichment_complete.flag",
-    log:
-        f"logs/enrichment.log",
-    params:
-        species     = config["species"],
-        go_onto     = ",".join(config["enrichment"]["go_ontologies"]),
-        run_kegg    = str(config["enrichment"].get("run_kegg", True)).upper(),
-        pval        = config["enrichment"]["pvalue_cutoff"],
-        qval        = config["enrichment"]["qvalue_cutoff"],
-        min_gs      = config["enrichment"].get("min_gs_size", 10),
-        max_gs      = config["enrichment"].get("max_gs_size", 500),
-        de_dir      = f"{OUTPUT}/pseudobulk_de",
-        output_dir  = f"{OUTPUT}/enrichment",
-    shell:
-        """
-        Rscript scripts/02_enrichment.R \
-            --de_dir       {params.de_dir} \
-            --species      {params.species} \
-            --go_ontologies {params.go_onto} \
-            --run_kegg     {params.run_kegg} \
-            --pvalue_cutoff {params.pval} \
-            --qvalue_cutoff {params.qval} \
-            --min_gs_size  {params.min_gs} \
-            --max_gs_size  {params.max_gs} \
-            --output_dir   {params.output_dir} \
-            2>&1 | tee {log}
-        touch {output.flag}
-        """
+if RUN_ENR:
+    rule enrichment:
+        input:
+            flag = rules.pseudobulk_de.output.flag,
+        output:
+            flag = f"{OUTPUT}/enrichment/enrichment_complete.flag",
+        log:
+            f"logs/enrichment.log",
+        params:
+            species     = config["species"],
+            go_onto     = ",".join(config["enrichment"]["go_ontologies"]),
+            run_kegg    = str(config["enrichment"].get("run_kegg", True)).upper(),
+            pval        = config["enrichment"]["pvalue_cutoff"],
+            qval        = config["enrichment"]["qvalue_cutoff"],
+            min_gs      = config["enrichment"].get("min_gs_size", 10),
+            max_gs      = config["enrichment"].get("max_gs_size", 500),
+            de_dir      = f"{OUTPUT}/pseudobulk_de",
+            output_dir  = f"{OUTPUT}/enrichment",
+        shell:
+            """
+            Rscript scripts/02_enrichment.R \
+                --de_dir       {params.de_dir} \
+                --species      {params.species} \
+                --go_ontologies {params.go_onto} \
+                --run_kegg     {params.run_kegg} \
+                --pvalue_cutoff {params.pval} \
+                --qvalue_cutoff {params.qval} \
+                --min_gs_size  {params.min_gs} \
+                --max_gs_size  {params.max_gs} \
+                --output_dir   {params.output_dir} \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+else:
+    rule enrichment:
+        output:
+            flag = f"{OUTPUT}/enrichment/enrichment_complete.flag",
+        shell:
+            "mkdir -p $(dirname {output.flag}) && touch {output.flag}"
 
 
 # ── Phase 4: Trajectory (optional) ───────────────────────────────────────────
@@ -315,14 +352,119 @@ else:
             "mkdir -p $(dirname {output.flag}) && touch {output.flag}"
 
 
+# ── Phase 5b: Exploratory gene-panel expression (optional) ────────────────────
+if RUN_EXPLORE:
+    EXP = config.get("exploration", {})
+
+    rule explore_expression:
+        input:
+            data = config["single_cell"]["input_path"],
+        output:
+            csv  = f"{OUTPUT}/exploration/gene_expression_by_celltype.csv",
+            flag = f"{OUTPUT}/exploration/exploration_complete.flag",
+        log:
+            "logs/explore_expression.log",
+        params:
+            genes      = ",".join(EXP.get("genes", [])),
+            group_by   = EXP.get("group_by", config["single_cell"]["cell_type_column"]),
+            split_by   = EXP.get("split_by", ""),
+            min_cells  = EXP.get("min_cells", 10),
+            excl_col   = EXP.get("exclude_column", ""),
+            excl_vals  = ",".join(EXP.get("exclude_values", [])),
+            assay      = EXP.get("assay", "RNA"),
+            top_n      = EXP.get("top_n", 20),
+            output_dir = f"{OUTPUT}/exploration",
+        shell:
+            """
+            Rscript scripts/05_explore_expression.R \
+                --input        {input.data} \
+                --genes        "{params.genes}" \
+                --group_by     "{params.group_by}" \
+                --split_by     "{params.split_by}" \
+                --min_cells    {params.min_cells} \
+                --exclude_col  "{params.excl_col}" \
+                --exclude_vals "{params.excl_vals}" \
+                --assay        "{params.assay}" \
+                --top_n        {params.top_n} \
+                --output_dir   {params.output_dir} \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+
+
+# ── Phase 5c: Full expression export (optional) ──────────────────────────────
+if RUN_EXPR_EXPORT:
+    EXPR = config.get("expression_export", {})
+
+    rule export_expression:
+        input:
+            data = QUERY_INPUT,
+        output:
+            flag = f"{OUTPUT}/export/expression/expression_complete.flag",
+        log:
+            "logs/export_expression.log",
+        params:
+            cell_type_column = EXPR.get("cell_type_column",
+                                        config["single_cell"]["cell_type_column"]),
+            cell_types       = ",".join(EXPR.get("cell_types") or []),
+            genes            = ",".join(EXPR.get("genes") or []),
+            by_dataset       = str(EXPR.get("by_dataset", False)).upper(),
+            dataset_column   = EXPR.get("dataset_column", "Dataset"),
+            datasets         = ",".join(EXPR.get("datasets") or []),
+            min_cells        = EXPR.get("min_cells", 10),
+            assay            = EXPR.get("assay", "RNA"),
+            value_layer      = EXPR.get("value_layer", "data"),
+            counts_layer     = EXPR.get("counts_layer", "counts"),
+            exclude_col      = EXPR.get("exclude_column", ""),
+            exclude_vals     = ",".join(EXPR.get("exclude_values") or []),
+            drop_zero        = str(EXPR.get("drop_zero_rows", True)).upper(),
+            gene_id_type     = EXPR.get("gene_id_type", "symbol"),
+            fmt              = EXPR.get("format", "parquet"),
+            species          = EXPR.get("species", config["species"]),
+            output_dir       = f"{OUTPUT}/export/expression",
+        shell:
+            """
+            Rscript scripts/07_export_expression.R \
+                --input            {input.data} \
+                --output_dir       {params.output_dir} \
+                --cell_type_column "{params.cell_type_column}" \
+                --cell_types       "{params.cell_types}" \
+                --genes            "{params.genes}" \
+                --by_dataset       {params.by_dataset} \
+                --dataset_column   "{params.dataset_column}" \
+                --datasets         "{params.datasets}" \
+                --min_cells        {params.min_cells} \
+                --assay            "{params.assay}" \
+                --value_layer      "{params.value_layer}" \
+                --counts_layer     "{params.counts_layer}" \
+                --exclude_col      "{params.exclude_col}" \
+                --exclude_vals     "{params.exclude_vals}" \
+                --drop_zero_rows   {params.drop_zero} \
+                --gene_id_type     "{params.gene_id_type}" \
+                --format           "{params.fmt}" \
+                --species          "{params.species}" \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+
+
 # ── Phase 6: Report ───────────────────────────────────────────────────────────
+def report_inputs(wildcards):
+    d = {}
+    if RUN_DE:    d["de_flag"]   = rules.pseudobulk_de.output.flag
+    if RUN_COMP:  d["comp_flag"] = rules.composition.output.flag
+    if RUN_ENR:   d["enr_flag"]  = rules.enrichment.output.flag
+    if RUN_TRAJ:  d["traj_flag"] = rules.trajectory.output.flag
+    if RUN_COMM:  d["comm_flag"] = rules.cell_communication.output.flag
+    # unpack() requires a non-empty dict; depend on the template so the
+    # report also re-renders when report.Rmd changes.
+    if not d:
+        d["report_rmd"] = "scripts/report.Rmd"
+    return d
+
 rule report:
     input:
-        de_flag   = rules.pseudobulk_de.output.flag,
-        comp_flag = rules.composition.output.flag,
-        enr_flag  = rules.enrichment.output.flag,
-        traj_flag = rules.trajectory.output.flag,
-        comm_flag = rules.cell_communication.output.flag,
+        unpack(report_inputs)
     output:
         html = f"{OUTPUT}/report/report.html",
     log:
@@ -338,6 +480,10 @@ rule report:
         species          = config["species"],
         run_traj         = str(RUN_TRAJ).upper(),
         run_comm         = str(RUN_COMM).upper(),
+        run_de           = str(RUN_DE).upper(),
+        run_comp         = str(RUN_COMP).upper(),
+        run_enr          = str(RUN_ENR).upper(),
+        run_explore      = str(RUN_EXPLORE).upper(),
     shell:
         """
         Rscript -e "rmarkdown::render(
@@ -353,6 +499,10 @@ rule report:
                 species       = '{params.species}',
                 run_traj      = {params.run_traj},
                 run_comm      = {params.run_comm},
+                run_de        = {params.run_de},
+                run_comp      = {params.run_comp},
+                run_enr       = {params.run_enr},
+                run_explore   = {params.run_explore},
                 methods_draft = {params.methods_draft}
             )
         )" 2>&1 | tee {log}

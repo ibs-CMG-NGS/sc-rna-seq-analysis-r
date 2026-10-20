@@ -49,11 +49,56 @@ export_seqviewer:
   enabled: true
   schema_version: "1.0"
 
+# ── Core module toggles ────────────────────────────────────
+# Set to false for exploratory-only runs (e.g. atlas gene-panel exploration
+# without biological replicates). enrichment requires pseudobulk_de.
+modules:
+  pseudobulk_de: true
+  composition: true
+  enrichment: true
+
 # ── Optional modules ───────────────────────────────────────
 optional_modules:
   trajectory: false
   cell_communication: true
   label_transfer: false
+  exploration: false
+
+# ── Exploratory gene-panel expression (Phase 5b) ──────────
+# Works on any annotated object, regardless of replicates.
+# Enable via either optional_modules.exploration or exploration.enabled.
+exploration:
+  enabled: false
+  genes: []                 # e.g. ["Glp1r", "Pnoc"]
+  group_by: "C185_named"    # cell-type column to summarize
+  split_by: "Dataset"       # optional per-dataset breakdown; "" = off
+  min_cells: 10             # minimum cells per group
+  exclude_column: "Author_Exclude"
+  exclude_values: ["yes"]
+  assay: "RNA"
+  top_n: 20                 # top cell types per gene (tables/plots)
+
+# ── Full expression export (viewer exploration, optional) ──
+# Aggregated gene x cell_type table (no cell-level values). Enables GUI
+# exploration of any gene without a predefined panel.
+expression_export:
+  enabled: false
+  cell_type_column: "C185_named"
+  cell_types: null          # null = all
+  genes: null               # null = all
+  by_dataset: false         # add per-dataset rows
+  dataset_column: "Dataset"
+  datasets: null            # null = all (used only when by_dataset: true)
+  min_cells: 10
+  assay: "RNA"
+  value_layer: "data"       # normalized layer used for mean_expression
+  counts_layer: "counts"    # raw counts used for detection
+  exclude_column: "Author_Exclude"
+  exclude_values: ["yes"]
+  drop_zero_rows: true      # omit long rows with n_expressing = 0
+  gene_id_type: "symbol"
+  format: "parquet"         # "parquet" | "csv"
+  species: "mouse"
 
 # ── Phase 0a: Label transfer (optional, reference-map) ─────
 label_transfer:
