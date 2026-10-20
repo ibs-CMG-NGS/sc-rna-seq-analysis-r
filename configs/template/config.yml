@@ -99,6 +99,16 @@ expression_export:
   gene_id_type: "symbol"
   format: "parquet"         # "parquet" | "csv"
   species: "mouse"
+  # Static summary figures (09_plot_expression.R)
+  plots: true
+  plots_top_genes: 50       # genes per heatmap (top-enriched selection)
+  plots_marker_top_n: 40    # cell types in the marker dot plot
+  plots_genes: null         # extra genes to force into the gene panel
+  plots_max_cell_types: 0   # 0 = all cell types
+  plots_min_pct: 10
+  plots_min_mean: 0.05
+  plots_dpi: 150
+  plots_pdf: true
 
 # ── Phase 0a: Label transfer (optional, reference-map) ─────
 label_transfer:

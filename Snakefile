@@ -27,6 +27,8 @@ RUN_ENR    = MODULES.get("enrichment", True)
 RUN_EXPLORE = bool(OPTIONAL.get("exploration", False) or
                    config.get("exploration", {}).get("enabled", False))
 RUN_EXPR_EXPORT = config.get("expression_export", {}).get("enabled", False)
+RUN_EXPR_PLOTS  = RUN_EXPR_EXPORT and \
+                  config.get("expression_export", {}).get("plots", True)
 if RUN_ENR and not RUN_DE:
     raise ValueError("modules.enrichment requires modules.pseudobulk_de; "
                      "set modules.enrichment: false")
@@ -56,6 +58,7 @@ rule all:
         expand("{out}/enrichment/enrichment_complete.flag",   out=OUTPUT) if RUN_ENR else [],
         expand("{out}/exploration/exploration_complete.flag", out=OUTPUT) if RUN_EXPLORE else [],
         expand("{out}/export/expression/expression_complete.flag", out=OUTPUT) if RUN_EXPR_EXPORT else [],
+        expand("{out}/export/expression/plot_complete.flag", out=OUTPUT) if RUN_EXPR_PLOTS else [],
         expand("{out}/trajectory/trajectory_complete.flag",   out=OUTPUT) if RUN_TRAJ else [],
         expand("{out}/cell_communication/comm_complete.flag", out=OUTPUT) if RUN_COMM else [],
         expand("{out}/export/seqviewer/export_complete.flag",  out=OUTPUT) if RUN_EXPORT else [],
@@ -443,6 +446,46 @@ if RUN_EXPR_EXPORT:
                 --gene_id_type     "{params.gene_id_type}" \
                 --format           "{params.fmt}" \
                 --species          "{params.species}" \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+
+
+# ── Phase 5d: Static summary figures (optional) ──────────────────────────────
+if RUN_EXPR_PLOTS:
+    EXPR = config.get("expression_export", {})
+
+    rule plot_expression:
+        input:
+            flag = f"{OUTPUT}/export/expression/expression_complete.flag",
+        output:
+            flag = f"{OUTPUT}/export/expression/plot_complete.flag",
+        log:
+            "logs/plot_expression.log",
+        params:
+            input_dir       = f"{OUTPUT}/export/expression",
+            output_dir      = f"{OUTPUT}/export/expression/plots",
+            top_genes       = EXPR.get("plots_top_genes", 50),
+            marker_top_n    = EXPR.get("plots_marker_top_n", 40),
+            genes           = ",".join(EXPR.get("plots_genes") or []),
+            max_cell_types  = EXPR.get("plots_max_cell_types", 0),
+            min_pct         = EXPR.get("plots_min_pct", 10),
+            min_mean        = EXPR.get("plots_min_mean", 0.05),
+            dpi             = EXPR.get("plots_dpi", 150),
+            pdf             = str(EXPR.get("plots_pdf", True)).upper(),
+        shell:
+            """
+            Rscript scripts/09_plot_expression.R \
+                --input_dir       "{params.input_dir}" \
+                --output_dir      "{params.output_dir}" \
+                --top_genes       {params.top_genes} \
+                --marker_top_n    {params.marker_top_n} \
+                --genes           "{params.genes}" \
+                --max_cell_types  {params.max_cell_types} \
+                --min_pct         {params.min_pct} \
+                --min_mean        {params.min_mean} \
+                --dpi             {params.dpi} \
+                --pdf             "{params.pdf}" \
                 2>&1 | tee {log}
             touch {output.flag}
             """

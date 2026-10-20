@@ -28,13 +28,18 @@ datasets <- ifelse(cell_type == "Rare", "D1", rep(c("D1", "D2"), length.out = n_
 
 counts <- matrix(rbinom(length(genes) * n_cells, size = 1, prob = 0.05),
                  nrow = length(genes), dimnames = list(genes, NULL))
-bump <- function(gene, ct, lo, hi) {
+bump <- function(gene, ct, lo, hi, keep_noise = FALSE) {
   idx <- which(cell_type == ct)
+  if (!keep_noise) counts[gene, ] <<- 0L
   counts[gene, idx] <<- sample(lo:hi, length(idx), replace = TRUE)
 }
 bump("Gene001", "Neuron", 3L, 9L)
-bump("Gene002", "Astro", 4L, 12L)
+bump("Gene002", "Astro", 4L, 12L, keep_noise = TRUE)
 bump("Gene003", "Microglia", 2L, 6L)
+counts["Gene004", ] <- rbinom(n_cells, 1, 0.05)
+bump("Gene004", "Microglia", 6L, 10L, keep_noise = TRUE)
+counts["Gene001", which(cell_type == "Astro")[1]] <- 1L
+counts["Gene003", which(cell_type == "Neuron")[11]] <- 1L
 
 exclude <- rep("no", n_cells)
 exclude[which(cell_type == "Neuron")[1:10]] <- "yes"
@@ -181,5 +186,32 @@ mg <- read_parquet(file.path(bundle, "datasets", "fixture_wide_mean_multi_group.
 check(!"gene_name" %in% names(mg), "multi_group fallback excludes gene_name")
 check(file.exists(file.path(bundle, "seqviewer_manifest.multi_group.json")),
       "multi_group fallback manifest exists")
+
+# --- static figures ---------------------------------------------------------
+cat("[static figures]\n")
+plots <- file.path(out1, "plots")
+log <- file.path(tmp, "plots.log")
+status <- system2("Rscript",
+  c(file.path(root, "scripts", "09_plot_expression.R"),
+    "--input_dir", out1,
+    "--output_dir", plots,
+    "--top_genes", "10",
+    "--marker_top_n", "5"),
+  stdout = log, stderr = log)
+if (status != 0) {
+  cat(readLines(log), sep = "\n")
+  stop("plot generation failed")
+}
+for (f in c("plot_manifest.json", "marker_genes.csv",
+            "cell_type_n_cells.png", "heatmap_top_enriched_genes.png",
+            "heatmap_marker_genes.png", "top_marker_dotplot.png",
+            "gene_detection_summary.png")) {
+  check(file.exists(file.path(plots, f)), paste("figure exists:", f))
+}
+pm <- fromJSON(file.path(plots, "plot_manifest.json"))
+check(all(pm$files %in% list.files(plots)), "plot_manifest lists only existing files")
+check(nrow(read.csv(file.path(plots, "marker_genes.csv"))) > 0L,
+      "marker_genes.csv is non-empty")
+check(pm$features$n_enriched_genes <= 10L, "top_genes parameter respected")
 
 cat("\nPASS test_export_expression\n")
