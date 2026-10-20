@@ -276,25 +276,34 @@ else:
 if RUN_EXPORT:
     rule export_seqviewer:
         input:
-            de_flag  = rules.pseudobulk_de.output.flag,
-            enr_flag = rules.enrichment.output.flag,
+            de_flag   = rules.pseudobulk_de.output.flag,
+            comp_flag = rules.composition.output.flag,
+            enr_flag  = rules.enrichment.output.flag,
         output:
             index = f"{OUTPUT}/export/seqviewer/export_index.tsv",
             flag  = f"{OUTPUT}/export/seqviewer/export_complete.flag",
         log:
             "logs/export_seqviewer.log",
         params:
-            de_dir         = f"{OUTPUT}/pseudobulk_de",
-            enrichment_dir = f"{OUTPUT}/enrichment",
-            output_dir     = f"{OUTPUT}/export/seqviewer",
-            schema_version = config.get("export_seqviewer", {}).get("schema_version", "1.0"),
+            de_dir          = f"{OUTPUT}/pseudobulk_de",
+            enrichment_dir  = f"{OUTPUT}/enrichment",
+            composition_dir = f"{OUTPUT}/composition",
+            output_dir      = f"{OUTPUT}/export/seqviewer",
+            schema_version  = config.get("export_seqviewer", {}).get("schema_version", "1.0"),
+            species         = config["species"],
+            padj            = config["padj_cutoff"],
+            log2fc          = config["log2fc_cutoff"],
         shell:
             """
             Rscript scripts/06_export_seqviewer.R \
-                --de_dir         {params.de_dir} \
-                --enrichment_dir {params.enrichment_dir} \
-                --output_dir     {params.output_dir} \
-                --schema_version {params.schema_version} \
+                --de_dir          {params.de_dir} \
+                --enrichment_dir  {params.enrichment_dir} \
+                --composition_dir {params.composition_dir} \
+                --output_dir      {params.output_dir} \
+                --schema_version  {params.schema_version} \
+                --species         {params.species} \
+                --padj_cutoff     {params.padj} \
+                --log2fc_cutoff   {params.log2fc} \
                 2>&1 | tee {log}
             touch {output.flag}
             """

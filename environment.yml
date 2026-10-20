@@ -51,6 +51,9 @@ dependencies:
   - r-openxlsx
   - r-pheatmap
   - r-arrow
+  # cmg-seqviewer export (06_export_seqviewer.R)
+  - r-digest
+  - r-jsonlite
   - bioconductor-complexheatmap
 
   # Python (for AnnData / h5ad support)

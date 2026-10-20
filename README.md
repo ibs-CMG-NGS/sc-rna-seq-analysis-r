@@ -16,6 +16,28 @@ Seurat (`.rds`) 또는 AnnData (`.h5ad`) 형식을 입력으로 받아, 세포 �
 | 4 | **Trajectory** *(선택)* | Monocle3 또는 Slingshot, 생물학적 판단에 기반한 root cell 지정 |
 | 5 | **Cell-Cell Communication** *(선택)* | CellChat 또는 LIANA, 조건 간 비교 지원 |
 | 6 | **보고서** | R Markdown HTML 보고서, Methods 초안 (`methods_draft.md`) 자동 생성 |
+| 7 | **cmg-seqviewer 연동** | DE / GO·KEGG / Composition / Multi-Group 결과를 뷰어 Import Folder 형식(parquet + `seqviewer_manifest.json`)으로 export |
+
+## cmg-seqviewer 연동 (export)
+
+`export_seqviewer` rule이 `output/export/seqviewer/`에 뷰어 번들을 만듭니다 (config의 `export_seqviewer.enabled`로 끌 수 있음).
+
+- `seqviewer_manifest.json`: 데이터셋 목록 (`datasets` 배열, `dataset_type` 명시)
+- `datasets/*.parquet`: 데이터셋 파일
+- `export_index.tsv`: 파일별 유형·세포타입·조건 목록
+- `COLUMNS.md`: 컬럼 규약 (schema_version 기록)
+- `export_complete.flag`: 완료 표시
+
+| 파일 | dataset_type | 내용 |
+|---|---|---|
+| `DE__<cell_type>__<contrast>.parquet` | differential_expression | 세포타입 × contrast별 DE 결과 |
+| `ENR__<cell_type>_<contrast>__GO_<ONT>_<up\|down>.parquet`, KEGG 동일 패턴 | go_analysis | GO/KEGG 결과 (세포타입 × contrast × 방향) |
+| `COMP__propeller.parquet` | composition | 세포타입 비율 검정 (propeller) |
+| `MG__<cell_type>.parquet` | multi_group | pseudobulk raw count, 샘플 열은 `<condition>_<rep>` |
+
+뷰어에서는 `output/export/seqviewer/` 폴더 자체를 **Import Folder**로 선택합니다. `metadata.json`이 아니라 `seqviewer_manifest.json`을 읽습니다.
+
+---
 
 ### Phase 0a — Label Transfer (optional, reference-map)
 
@@ -191,6 +213,13 @@ output/
 │   ├── lr_interactions_<condition>.csv
 │   ├── cellchat_<condition>.rds
 │   └── plots/
+├── export/
+│   └── seqviewer/                   # cmg-seqviewer Import Folder
+│       ├── seqviewer_manifest.json
+│       ├── datasets/*.parquet
+│       ├── export_index.tsv
+│       ├── COLUMNS.md
+│       └── export_complete.flag
 └── report/
     ├── report.html
     └── methods_draft.md             # 논문 Methods 초안 자동 생성
