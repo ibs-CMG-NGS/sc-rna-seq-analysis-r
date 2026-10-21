@@ -963,46 +963,91 @@ wsl --shutdown
 
 ### C. cmg-seqviewer로 결과 보기 (선택)
 
-이 파이프라인은 결과를 [cmg-seqviewer](https://github.com/ibs-CMG-NGS/cmg-seqviewer)에서 볼 수 있는
-`seqviewer_manifest.json` + `datasets/*.parquet` 번들로 export할 수 있습니다.
+이 파이프라인은 비교 분석 결과를
+[cmg-seqviewer](https://github.com/ibs-CMG-NGS/cmg-seqviewer)에서 바로 탐색할 수 있는
+**Import Folder 번들**(`seqviewer_manifest.json` + `datasets/*.parquet`)로 export합니다.
+`report.html`이 분석의 최종 요약이라면, viewer 번들은 DE·GO·세포 조성 결과를
+유전자/세포타입 단위로 필터링하며 보기 위한 보조 산출물입니다.
 
-예제 config(`configs/tutorial/hypomap_dowsett_compare.yml`)는 이미
-`export_seqviewer.enabled: true`로 설정되어 있습니다. 다른 config에서 export하려면:
+#### C-1. export 활성화
+
+예제 config(`configs/tutorial/hypomap_dowsett_compare.yml`)는 이미 켜져 있습니다.
+다른 config에서 사용하려면 다음을 추가합니다.
 
 ```yaml
 export_seqviewer:
   enabled: true
+  schema_version: "1.0"
 ```
 
-그다음 다시 실행합니다.
+그다음 파이프라인을 다시 실행합니다.
 
 ```bash
 bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
 ```
 
-출력:
+#### C-2. 무엇이 export되나
+
+출력 위치는 `output/<실험명>/export/seqviewer/`입니다.
 
 ```text
 output/tutorial_compare/export/seqviewer/
-├── seqviewer_manifest.json
+├── seqviewer_manifest.json      # 뷰어가 읽는 데이터셋 목록
 ├── datasets/
-│   ├── DE__*.parquet
-│   ├── ENR__*.parquet
+│   ├── DE__<세포타입>__<contrast>.parquet
+│   ├── ENR__<세포타입>_<contrast>__GO_<BP|CC|MF>_<up|down>.parquet
+│   ├── ENR__<세포타입>_<contrast>__KEGG_<up|down>.parquet
 │   ├── COMP__propeller.parquet
-│   └── MG__*.parquet
-├── export_index.tsv
-├── COLUMNS.md
-└── export_complete.flag
+│   └── MG__<세포타입>.parquet
+├── export_index.tsv             # 파일별 유형·세포타입·조건 목록
+├── COLUMNS.md                   # 컬럼 규약
+└── export_complete.flag         # export 완료 표시
 ```
 
-뷰어에서 이 폴더를 **Import Folder**로 선택합니다.
+| dataset_type | 내용 | 튜토리얼 실행 예시 |
+|---|---|---|
+| `differential_expression` | 세포타입 × contrast별 pseudobulk DE | 10개 |
+| `go_analysis` | GO BP/CC/MF + KEGG, up/down | 48개 |
+| `multi_group` | pseudobulk raw count, 샘플 열 포함 | 10개 |
+| `composition` | propeller 세포 조성 검정 | 1개 |
 
-> 현재 public cmg-seqviewer HEAD(v1.3.2)에서는 `composition` dataset type을 지원하지 않아
-> DE/GO/Multi-Group 68개가 반입되고 composition 파일은 skip됩니다.
-> composition을 반입하려면 뷰어팀이 해당 기능을 포함한 버전을 제공해야 합니다.
+예제 비교 분석(`10`개 세포타입, `Fasted` vs `Normal chow`)에서는 총 **69개**
+데이터셋이 생성되었습니다. 데이터셋 수는 세포타입 수, contrast 수, enrichment
+결과 유무에 따라 달라집니다.
 
-전체 유전자 × 세포타입 expression summary 번들을 만들려면 `expression_export` 모듈을 사용합니다.
-`expression_export.enabled: true`로 설정하고 실행한 뒤:
+#### C-3. 뷰어에 Import
+
+1. cmg-seqviewer를 실행합니다.
+2. **Import Folder**를 선택합니다.
+3. `metadata.json`이 아니라 **`seqviewer_manifest.json`이 들어 있는 폴더**
+   (`output/tutorial_compare/export/seqviewer/`)를 지정합니다.
+4. Import 결과에서 데이터셋 수와 유형을 확인합니다.
+
+> **현재 호환성 (2026-10-21 검증 기준)**
+> public cmg-seqviewer HEAD(v1.3.2)는 `composition` dataset type을 아직 지원하지
+> 않습니다. 따라서 위 69개 중 DE/GO/Multi-Group **68개는 정상 반입**되고,
+> `COMP__propeller.parquet` 1개만 `missing`으로 표시됩니다.
+> export 자체는 정상이며 composition parquet도 보존됩니다. 뷰어팀이
+> `composition`을 지원하는 버전을 제공하면 같은 폴더를 다시 Import하면 됩니다.
+
+#### C-4. 전체 유전자 expression summary 번들 (별도)
+
+DE/GO 번들과 별도로, **전체 유전자 × 세포타입 평균 발현**을 뷰어에서 탐색하려면
+`expression_export` 모듈을 사용합니다. 이 번들은 DE 결과가 아니라 발현 요약
+(mean, percent expressing)입니다.
+
+```yaml
+expression_export:
+  enabled: true
+  cell_type_column: "cell_type"   # 입력 객체의 세포타입 컬럼명
+  min_cells: 10
+```
+
+```bash
+bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
+```
+
+그다음 export 결과를 뷰어 번들로 조립합니다.
 
 ```bash
 Rscript scripts/08_build_viewer_bundle.R \
@@ -1014,7 +1059,13 @@ Rscript scripts/08_build_viewer_bundle.R \
   --pct_scale 0-100
 ```
 
-자세한 규격은 `README.md`의 "cmg-seqviewer 연동" 섹션을 참고하세요.
+생성된 `output/tutorial_compare/export/viewer/hypomap_dowsett/` 폴더도
+`seqviewer_manifest.json`을 포함하므로 **Import Folder**로 반입할 수 있습니다.
+전체 HypoMap(수십만 세포)에서 실행하면 시간과 RAM 사용량이 크므로, 먼저
+subset에서 확인한 뒤 전체로 확장하는 것을 권장합니다.
+
+자세한 파일 규격과 컬럼 정의는 `README.md`의 "cmg-seqviewer 연동" 섹션과
+`COLUMNS.md`를 참고하세요.
 
 ### D. GEO accession과 nf_fetchgeo의 경계
 
