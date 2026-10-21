@@ -1,7 +1,7 @@
 # scRNA-seq Downstream Analysis Pipeline
 
 R과 Snakemake 기반의 재현 가능한 단일세포 RNA-seq 3차 분석 파이프라인입니다.  
-Seurat (`.rds`) 또는 AnnData (`.h5ad`) 형식을 입력으로 받아, 세포 조성 분석 → Pseudobulk DE → 유전자 세트 풍부화 → (선택) Trajectory → (선택) 세포 간 커뮤니케이션 → 통합 HTML 보고서까지 자동 생성합니다.
+Seurat (`.rds`) 또는 AnnData (`.h5ad`) 형식을 입력으로 받습니다. 목적에 따라 **(1) 반복 없이 유전자 발현을 요약하는 탐색 분석**과 **(2) 생물학적 반복을 이용하는 비교 통계 분석**으로 실행할 수 있으며, 비교 분석은 세포 조성 → Pseudobulk DE → 유전자 세트 풍부화 → (선택) Trajectory → (선택) 세포 간 커뮤니케이션 → 통합 HTML 보고서까지 자동 생성합니다.
 
 ---
 
@@ -17,6 +17,74 @@ Seurat (`.rds`) 또는 AnnData (`.h5ad`) 형식을 입력으로 받아, 세포 �
 | 5 | **Cell-Cell Communication** *(선택)* | CellChat 또는 LIANA, 조건 간 비교 지원 |
 | 6 | **보고서** | R Markdown HTML 보고서, Methods 초안 (`methods_draft.md`) 자동 생성 |
 | 7 | **cmg-seqviewer 연동** | DE / GO·KEGG / Composition / Multi-Group 결과를 뷰어 Import Folder 형식(parquet + `seqviewer_manifest.json`)으로 export |
+
+## 분석 모드: 탐색 vs 비교(통계)
+
+이 파이프라인은 목적이 다른 두 분석을 같은 config 구조로 실행합니다. **가장 흔한 실수는 생물학적 반복이 없는 데이터에 비교 통계 모듈을 켜는 것입니다.**
+
+| | 탐색·서술 분석 | 비교·통계 분석 |
+|---|---|---|
+| 질문 | "이 유전자가 어느 세포타입에서 발현되나?" | "조건 간 발현·세포 조성·경로가 다른가?" |
+| 필요 데이터 | annotated Seurat / AnnData | + `sample_id`(생물학적 샘플)와 `condition` |
+| 최소 반복 | 없음 | 조건당 생물학적 샘플 **≥2** (권장 ≥3) |
+| 핵심 config | `optional_modules.exploration: true`, `modules.*: false` | `modules.pseudobulk_de/composition/enrichment: true`, `optional_modules.exploration: false` |
+| 주요 출력 | `exploration/*.csv`, bar/dot/heatmap | `pseudobulk_de/*`, `composition/*`, `enrichment/*`, volcano plot |
+| 통계 | 없음 (서술적) | DESeq2/edgeR, propeller, GO/KEGG ORA |
+| 주의 | `split_by: Dataset`으로 dataset 교란 확인 | 세포를 반복으로 세면 pseudoreplication |
+
+- **탐색 분석**은 `exploration` 모듈만 켭니다. 실제 비교 설계가 없어도 되지만, 현재 loader는 `cell_type`/`sample`/`condition` 컬럼 자체를 요구하므로 더미 값(예: `condition` = `"all"`)을 지정해야 합니다. p-value는 계산하지 않습니다.
+- **비교 분석**은 `sample_column`이 **세포 ID가 아닌 생물학적 샘플 ID**여야 합니다. 조건당 샘플이 1개면 재현성 있는 통계 검정이 어렵습니다.
+- **둘 다** 켤 수 있습니다. 이 경우 탐색 결과와 비교 결과가 같은 HTML 리포트에 포함됩니다.
+- `modules.enrichment: true`는 `modules.pseudobulk_de: true`가 필요합니다.
+- 실행 예시와 실제 출력은 [HypoMap 튜토리얼](docs/tutorial_hypomap.md)의 **5장(탐색)**과 **6장(비교)**을 참고하세요.
+
+### 탐색 전용 최소 설정
+
+```yaml
+single_cell:
+  input_path: "path/to/annotated.rds"
+  input_format: "seurat"
+  cell_type_column: "cell_type"
+  sample_column: "sample_id"
+  condition_column: "condition"
+  cell_types: null
+
+modules:
+  pseudobulk_de: false
+  composition: false
+  enrichment: false
+
+optional_modules:
+  exploration: true
+
+exploration:
+  enabled: true
+  genes: ["Agrp", "Pomc", "Glp1r"]
+  group_by: "cell_type"
+  split_by: "Dataset"
+  min_cells: 10
+```
+
+### 비교 통계 최소 설정
+
+```yaml
+single_cell:
+  input_path: "path/to/annotated.rds"
+  input_format: "seurat"
+  cell_type_column: "cell_type"
+  sample_column: "sample_id"      # 세포 ID가 아닌 생물학적 샘플 ID
+  condition_column: "condition"
+  cell_types: null
+
+modules:
+  pseudobulk_de: true
+  composition: true
+  enrichment: true
+
+de_analysis:
+  method: "DESeq2"
+  reference_level: "control"
+```
 
 ## cmg-seqviewer 연동 (export)
 
@@ -108,6 +176,10 @@ cp configs/template/config.yml configs/config_<실험명>.yml
 | `single_cell.condition_column` | 비교 조건 컬럼명 |
 | `de_analysis.method` | `DESeq2` 또는 `edgeR` |
 | `species` | `human` 또는 `mouse` |
+| `modules.pseudobulk_de` | 비교 통계 사용 시 `true`, 탐색 전용이면 `false` |
+| `modules.composition` | 세포 비율 비교 시 `true` |
+| `modules.enrichment` | GO/KEGG 사용 시 `true` (`pseudobulk_de` 필요) |
+| `optional_modules.exploration` | 유전자 패널 탐색 시 `true` |
 | `optional_modules.trajectory` | `true` / `false` |
 | `optional_modules.cell_communication` | `true` / `false` |
 
@@ -115,13 +187,19 @@ cp configs/template/config.yml configs/config_<실험명>.yml
 
 ### 4. 파이프라인 실행
 
-**전체 실행 (Phase 1–6):**
+**비교 통계 포함 전체 실행 (Phase 1–6):**
 
 ```bash
 bash run_pipeline.sh configs/config_<실험명>.yml --cores 8
 ```
 
-**Downstream만 재실행** (입력 로딩 생략, cutoff 변경 등):
+**탐색 전용 실행** (생물학적 반복 불필요):
+
+```bash
+bash run_pipeline.sh configs/config_explore.yml --cores 4
+```
+
+**Downstream만 재실행** (비교 분석에서 입력 로딩 생략, cutoff 변경 등):
 
 ```bash
 bash run_downstream_only.sh configs/config_<실험명>.yml --cores 8
@@ -164,7 +242,13 @@ enrichment:
   pvalue_cutoff:   0.05
   qvalue_cutoff:   0.2
 
+modules:
+  pseudobulk_de: true    # 탐색 전용이면 false
+  composition: true      # 탐색 전용이면 false
+  enrichment: true       # 탐색 전용이면 false (pseudobulk_de 필요)
+
 optional_modules:
+  exploration:        false   # 탐색 전용이면 true
   trajectory:         false
   cell_communication: true
 
