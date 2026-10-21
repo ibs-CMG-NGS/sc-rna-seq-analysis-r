@@ -685,6 +685,13 @@ output/
     │   ├── <cell_type>_KEGG_up.csv
     │   ├── <cell_type>_KEGG_down.csv
     │   └── plots/
+    ├── export/
+    │   └── seqviewer/               # cmg-seqviewer Import Folder
+    │       ├── seqviewer_manifest.json
+    │       ├── datasets/*.parquet
+    │       ├── export_index.tsv
+    │       ├── COLUMNS.md
+    │       └── export_complete.flag
     └── report/
         ├── report.html
         └── methods_draft.md
@@ -959,7 +966,8 @@ wsl --shutdown
 이 파이프라인은 결과를 [cmg-seqviewer](https://github.com/ibs-CMG-NGS/cmg-seqviewer)에서 볼 수 있는
 `seqviewer_manifest.json` + `datasets/*.parquet` 번들로 export할 수 있습니다.
 
-비교 분석 결과(DE/GO/composition/Multi-Group)를 export하려면 config에서:
+예제 config(`configs/tutorial/hypomap_dowsett_compare.yml`)는 이미
+`export_seqviewer.enabled: true`로 설정되어 있습니다. 다른 config에서 export하려면:
 
 ```yaml
 export_seqviewer:

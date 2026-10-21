@@ -45,7 +45,7 @@ optional_modules:
   exploration: false
 
 export_seqviewer:
-  enabled: false
+  enabled: true
   schema_version: "1.0"
 
 de_analysis:
