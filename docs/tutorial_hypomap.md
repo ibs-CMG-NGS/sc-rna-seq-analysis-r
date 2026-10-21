@@ -997,6 +997,10 @@ output/tutorial_compare/export/seqviewer/
 
 뷰어에서 이 폴더를 **Import Folder**로 선택합니다.
 
+> 현재 public cmg-seqviewer HEAD(v1.3.2)에서는 `composition` dataset type을 지원하지 않아
+> DE/GO/Multi-Group 68개가 반입되고 composition 파일은 skip됩니다.
+> composition을 반입하려면 뷰어팀이 해당 기능을 포함한 버전을 제공해야 합니다.
+
 전체 유전자 × 세포타입 expression summary 번들을 만들려면 `expression_export` 모듈을 사용합니다.
 `expression_export.enabled: true`로 설정하고 실행한 뒤:
 

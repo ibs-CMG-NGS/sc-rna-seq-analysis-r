@@ -79,3 +79,5 @@
 | E4 | composition type 등 신규 기능 반영 | R1 |
 
 회신 주시면 E2·E3 설계에 즉시 반영하겠습니다. 감사합니다.
+
+- [ ] 2026-10-21 재확인: public cmg-seqviewer HEAD(v1.3.2)와 PR refs 1–8에도 `DatasetType.composition`이 없습니다. 회신 기준 커밋 `417d981`·`5158ad0`의 브랜치/태그를 확인해 주세요.
