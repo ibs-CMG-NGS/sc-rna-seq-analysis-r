@@ -25,8 +25,6 @@ OPTIONAL   = config.get("optional_modules", {})
 RUN_TRAJ   = OPTIONAL.get("trajectory", False)
 RUN_COMM   = OPTIONAL.get("cell_communication", True)
 RUN_LBL    = OPTIONAL.get("label_transfer", False)
-RUN_EXPORT = config.get("export_seqviewer", {}).get("enabled", True)
-
 # Core module toggles (default: keep previous behaviour = all on)
 MODULES    = config.get("modules", {})
 RUN_DE     = MODULES.get("pseudobulk_de", True)
@@ -36,9 +34,31 @@ RUN_ENR    = MODULES.get("enrichment", True)
 # Either optional_modules.exploration or exploration.enabled enables it.
 RUN_EXPLORE = bool(OPTIONAL.get("exploration", False) or
                    config.get("exploration", {}).get("enabled", False))
-RUN_EXPR_EXPORT = config.get("expression_export", {}).get("enabled", False)
-RUN_EXPR_PLOTS  = RUN_EXPR_EXPORT and \
-                  config.get("expression_export", {}).get("plots", True)
+
+EXPR_CFG   = config.get("expression_export", {})
+VIEWER_CFG = config.get("viewer_export")
+RUN_VIEWER = bool(VIEWER_CFG and VIEWER_CFG.get("enabled", False))
+
+# Unified viewer export (preferred). One switch + one Import Folder; internally
+# analysis (DE/GO/composition/MG) and expression summary are built separately.
+if RUN_VIEWER:
+    RUN_VIEWER_ANALYSIS   = bool(VIEWER_CFG.get("analysis", True))
+    RUN_VIEWER_EXPRESSION = bool(VIEWER_CFG.get("expression", False))
+    RUN_EXPORT     = False  # legacy analysis-only rule is superseded
+    RUN_EXPR_EXPORT = RUN_VIEWER_EXPRESSION
+    if not (RUN_VIEWER_ANALYSIS or RUN_VIEWER_EXPRESSION):
+        raise ValueError("viewer_export.enabled is true but both analysis and expression are false")
+    if RUN_VIEWER_ANALYSIS and not RUN_DE:
+        raise ValueError("viewer_export.analysis requires modules.pseudobulk_de")
+else:
+    RUN_VIEWER_ANALYSIS   = False
+    RUN_VIEWER_EXPRESSION = False
+    # Backward compatibility: legacy separate exports still work when the
+    # viewer_export block is absent.
+    RUN_EXPORT      = config.get("export_seqviewer", {}).get("enabled", True)
+    RUN_EXPR_EXPORT = EXPR_CFG.get("enabled", False)
+
+RUN_EXPR_PLOTS = RUN_EXPR_EXPORT and EXPR_CFG.get("plots", True)
 if RUN_ENR and not RUN_DE:
     raise ValueError("modules.enrichment requires modules.pseudobulk_de; "
                      "set modules.enrichment: false")
@@ -71,7 +91,7 @@ rule all:
         expand("{out}/export/expression/plot_complete.flag", out=OUTPUT) if RUN_EXPR_PLOTS else [],
         expand("{out}/trajectory/trajectory_complete.flag",   out=OUTPUT) if RUN_TRAJ else [],
         expand("{out}/cell_communication/comm_complete.flag", out=OUTPUT) if RUN_COMM else [],
-        expand("{out}/export/seqviewer/export_complete.flag",  out=OUTPUT) if RUN_EXPORT else [],
+        expand("{out}/export/seqviewer/export_complete.flag",  out=OUTPUT) if (RUN_VIEWER or RUN_EXPORT) else [],
         expand("{out}/report/report.html",                    out=OUTPUT),
 
 
@@ -357,7 +377,7 @@ if RUN_EXPORT:
                 2>&1 | tee {log}
             touch {output.flag}
             """
-else:
+elif not RUN_VIEWER:
     rule export_seqviewer:
         output:
             flag = f"{OUTPUT}/export/seqviewer/export_complete.flag",
@@ -433,7 +453,7 @@ if RUN_EXPR_EXPORT:
             drop_zero        = str(EXPR.get("drop_zero_rows", True)).upper(),
             gene_id_type     = EXPR.get("gene_id_type", "symbol"),
             fmt              = EXPR.get("format", "parquet"),
-            species          = EXPR.get("species", config["species"]),
+            species          = EXPR.get("species") or config["species"],
             output_dir       = f"{OUTPUT}/export/expression",
         shell:
             """
@@ -498,6 +518,136 @@ if RUN_EXPR_PLOTS:
                 --pdf             "{params.pdf}" \
                 2>&1 | tee {log}
             touch {output.flag}
+            """
+
+
+# ── Phase 5e: Unified viewer export ──────────────────────────────────────────
+# Preferred entry point when config has a `viewer_export` block. Builds the
+# analysis and expression pieces in separate staging dirs, then merges them into
+# one Import Folder. Legacy export_seqviewer / expression_export keep working
+# when `viewer_export` is absent.
+if RUN_VIEWER:
+    VIEWER_SCHEMA = VIEWER_CFG.get(
+        "schema_version",
+        config.get("export_seqviewer", {}).get("schema_version", "1.0"))
+    VIEWER_ORGANISM = "Mus musculus" if config.get("species") == "mouse" else "Homo sapiens"
+    VIEWER_EXPR_PREFIX = VIEWER_CFG.get("expression_prefix", "expression")
+    VIEWER_EXPR_ALIAS = VIEWER_CFG.get("expression_alias", VIEWER_EXPR_PREFIX)
+    VIEWER_EXPR_CELL_TYPE_LEVEL = VIEWER_CFG.get("expression_cell_type_level", "")
+    VIEWER_EXPR_PCT_SCALE = VIEWER_CFG.get("expression_pct_scale", "0-100")
+    VIEWER_EXPR_GENE_INDEX = VIEWER_CFG.get(
+        "expression_gene_index_name", f"{VIEWER_EXPR_PREFIX}_gene_index.parquet")
+    VIEWER_EXPR_SUMMARY = VIEWER_CFG.get(
+        "expression_summary_name", f"{VIEWER_EXPR_PREFIX}_cell_type_summary.parquet")
+    VIEWER_EXPR_DATASET_TYPE = VIEWER_CFG.get("expression_dataset_type", "expression_summary")
+    VIEWER_EXPR_PRIMARY = VIEWER_CFG.get("expression_primary", "wide")
+    VIEWER_EXPR_INCLUDE_LONG = str(VIEWER_CFG.get("expression_include_long", False)).upper()
+    VIEWER_EXPR_SOURCE = VIEWER_CFG.get("expression_source", "scRNA-seq pipeline")
+    VIEWER_EXPR_LICENSE = VIEWER_CFG.get("expression_license", "CC BY 4.0")
+    VIEWER_EXPR_CITATION = VIEWER_CFG.get("expression_citation", "")
+
+    def viewer_export_inputs(wildcards):
+        d = {}
+        if RUN_VIEWER_ANALYSIS:
+            d["de_flag"] = rules.pseudobulk_de.output.flag
+            if RUN_COMP:
+                d["comp_flag"] = rules.composition.output.flag
+            if RUN_ENR:
+                d["enr_flag"] = rules.enrichment.output.flag
+        if RUN_VIEWER_EXPRESSION:
+            d["expr_flag"] = rules.export_expression.output.flag
+        return d
+
+    rule viewer_export:
+        input:
+            unpack(viewer_export_inputs)
+        output:
+            manifest = f"{OUTPUT}/export/seqviewer/seqviewer_manifest.json",
+            index    = f"{OUTPUT}/export/seqviewer/export_index.tsv",
+            flag     = f"{OUTPUT}/export/seqviewer/export_complete.flag",
+        log:
+            "logs/viewer_export.log",
+        params:
+            analysis              = str(RUN_VIEWER_ANALYSIS).upper(),
+            expression            = str(RUN_VIEWER_EXPRESSION).upper(),
+            work_dir              = f"{OUTPUT}/export/seqviewer_work",
+            analysis_dir          = f"{OUTPUT}/export/seqviewer_work/analysis",
+            expression_dir        = f"{OUTPUT}/export/seqviewer_work/expression",
+            output_dir            = f"{OUTPUT}/export/seqviewer",
+            expression_export_dir = f"{OUTPUT}/export/expression",
+            de_dir                = f"{OUTPUT}/pseudobulk_de",
+            enrichment_dir        = f"{OUTPUT}/enrichment" if RUN_ENR else "",
+            composition_dir       = f"{OUTPUT}/composition" if RUN_COMP else "",
+            schema_version        = VIEWER_SCHEMA,
+            species               = config["species"],
+            padj                  = config["padj_cutoff"],
+            log2fc                = config["log2fc_cutoff"],
+            organism              = VIEWER_ORGANISM,
+            expr_prefix           = VIEWER_EXPR_PREFIX,
+            expr_alias            = VIEWER_EXPR_ALIAS,
+            expr_cell_type_level  = VIEWER_EXPR_CELL_TYPE_LEVEL,
+            expr_pct_scale        = VIEWER_EXPR_PCT_SCALE,
+            expr_gene_index       = VIEWER_EXPR_GENE_INDEX,
+            expr_summary          = VIEWER_EXPR_SUMMARY,
+            expr_dataset_type     = VIEWER_EXPR_DATASET_TYPE,
+            expr_primary          = VIEWER_EXPR_PRIMARY,
+            expr_include_long     = VIEWER_EXPR_INCLUDE_LONG,
+            expr_source           = VIEWER_EXPR_SOURCE,
+            expr_license          = VIEWER_EXPR_LICENSE,
+            expr_citation         = VIEWER_EXPR_CITATION,
+            expr_gene_id_type     = EXPR_CFG.get("gene_id_type", "symbol"),
+            expr_normalization    = EXPR_CFG.get("normalization", "log1p_normalized"),
+            expr_detection        = EXPR_CFG.get("detection", "count > 0"),
+        shell:
+            r"""
+            set -euo pipefail
+            rm -rf "{params.analysis_dir}" "{params.expression_dir}"
+            mkdir -p "{params.analysis_dir}" "{params.expression_dir}"
+
+            if [ "{params.analysis}" = "TRUE" ]; then
+              Rscript scripts/06_export_seqviewer.R \
+                --de_dir          "{params.de_dir}" \
+                --enrichment_dir  "{params.enrichment_dir}" \
+                --composition_dir "{params.composition_dir}" \
+                --output_dir      "{params.analysis_dir}" \
+                --schema_version  "{params.schema_version}" \
+                --species         "{params.species}" \
+                --padj_cutoff     {params.padj} \
+                --log2fc_cutoff   {params.log2fc}
+            fi
+
+            if [ "{params.expression}" = "TRUE" ]; then
+              Rscript scripts/08_build_viewer_bundle.R \
+                --export_dir      "{params.expression_export_dir}" \
+                --bundle_dir      "{params.expression_dir}" \
+                --prefix          "{params.expr_prefix}" \
+                --alias           "{params.expr_alias}" \
+                --dataset_type    "{params.expr_dataset_type}" \
+                --primary         "{params.expr_primary}" \
+                --cell_type_level "{params.expr_cell_type_level}" \
+                --organism        "{params.organism}" \
+                --source          "{params.expr_source}" \
+                --license         "{params.expr_license}" \
+                --citation        "{params.expr_citation}" \
+                --pct_scale       "{params.expr_pct_scale}" \
+                --gene_id_type    "{params.expr_gene_id_type}" \
+                --normalization   "{params.expr_normalization}" \
+                --detection       "{params.expr_detection}" \
+                --gene_index_name "{params.expr_gene_index}" \
+                --summary_name    "{params.expr_summary}" \
+                --include_long    "{params.expr_include_long}" \
+                --fallback_multi_group FALSE
+            fi
+
+            Rscript scripts/10_merge_viewer_bundle.R \
+              --analysis_dir   "{params.analysis_dir}" \
+              --expression_dir "{params.expression_dir}" \
+              --output_dir     "{params.output_dir}" \
+              --schema_version "{params.schema_version}" \
+              2>&1 | tee {log}
+
+            rm -rf "{params.analysis_dir}" "{params.expression_dir}"
+            rmdir "{params.work_dir}" 2>/dev/null || true
             """
 
 

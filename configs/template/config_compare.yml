@@ -55,9 +55,12 @@ optional_modules:
   cell_communication: false
   label_transfer: false
 
-# 비교 결과를 cmg-seqviewer로 export하려면 true.
-export_seqviewer:
+# 비교 결과를 cmg-seqviewer로 export합니다.
+# DE/GO/composition/MG만 필요하므로 expression은 끕니다.
+viewer_export:
   enabled: true
+  analysis: true
+  expression: false
   schema_version: "1.0"
 
 report:

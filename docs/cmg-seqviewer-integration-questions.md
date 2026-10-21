@@ -4,13 +4,15 @@
 > 수신: cmg-seqviewer 개발팀
 > 목적: 본 파이프라인 산출물을 cmg-seqviewer로 넘겨 연구자가 검색·비교·시각화할 수 있게 하는 연동 스펙 확정
 
+> **2026-10-21 상태**: public cmg-seqviewer v1.3.2는 `composition` / `expression_summary` dataset type을 아직 지원하지 않습니다. 파이프라인은 두 타입을 포함한 unified bundle을 정상 생성하며, 지원 뷰어 버전에서는 같은 폴더를 그대로 Import할 수 있습니다.
+
 ---
 
 ## 1. 배경
 
 - 본 파이프라인: `ibs-CMG-NGS/sc-rna-seq-analysis-r` (R/Seurat + Snakemake, **3차 분석 전용**)
   — 기존 `sc-rna-seq-analysis`(Scanpy판)과는 **별개 구현**입니다.
-- 연동 원칙: **뷰어는 Seurat/h5ad를 직접 읽지 않습니다.** 본 파이프라인이 뷰어의 기존 스키마(DE / GO·KEGG / Multi-Group)로 reshape한 **parquet + manifest**를 `output/<run>/export/seqviewer/`에 내보내고, 뷰어가 이를 소비합니다.
+- 연동 원칙: **뷰어는 Seurat/h5ad를 직접 읽지 않습니다.** 본 파이프라인의 `viewer_export`가 분석 결과(DE / GO·KEGG / composition / Multi-Group)와 탐색용 expression summary를 하나의 **parquet + `seqviewer_manifest.json`** 번들로 `output/<run>/export/seqviewer/`에 내보내고, 뷰어가 이를 소비합니다.
 - 기대 효과: 세포타입별 DE/GO 결과를 DB에 적재 → **Cell Type / Organism / Tags 검색** + **Cross-Dataset Comparison**(세포타입 간 비교) + Volcano/Dot plot 등 기존 기능 재사용.
 
 ## 2. 확인한 사항 (문서 기준)

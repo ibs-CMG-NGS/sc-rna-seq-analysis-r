@@ -40,9 +40,24 @@ exploration:
   assay: "RNA"
   top_n: 15
 
-export_seqviewer:
-  enabled: false
+# 탐색 결과를 viewer에서 보려면 expression summary를 export합니다.
+viewer_export:
+  enabled: true
+  analysis: false
+  expression: true
   schema_version: "1.0"
+  expression_prefix: "hypomap_C185_explore"
+  expression_alias: "HypoMap C185 exploration mean expression"
+  expression_cell_type_level: "C185"
+  expression_pct_scale: "0-100"
+  expression_source: "HypoMap"
+  expression_license: "CC BY 4.0"
+
+expression_export:
+  cell_type_column: "C185_named"
+  min_cells: 10
+  exclude_column: "Author_Exclude"
+  exclude_values: ["yes"]
 
 de_analysis:
   method: "DESeq2"

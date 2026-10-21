@@ -47,9 +47,23 @@ enrichment:
   max_gs_size: 500
 
 # ── cmg-seqviewer handoff export (Track B, E1) ─────────────
-# Producer-side export of DE / GO·KEGG results as parquet bundles that
-# cmg-seqviewer (or any table-based viewer) can consume. The viewer never
-# reads Seurat/.h5ad objects directly.
+# Preferred: one switch + one Import Folder. `analysis` exports DE / GO·KEGG /
+# composition / Multi-Group; `expression` exports the full gene x cell_type
+# summary. Internally they are built separately and merged.
+# When this block is absent, legacy export_seqviewer / expression_export
+# settings are still honored for backward compatibility.
+viewer_export:
+  enabled: false
+  analysis: true            # DE / GO·KEGG / composition / Multi-Group
+  expression: false         # full gene x cell_type mean/pct summary
+  schema_version: "1.0"
+  # Bundle metadata used only when expression: true
+  expression_prefix: "my_experiment"
+  expression_alias: "My experiment mean expression"
+  expression_cell_type_level: ""   # e.g. C185, C66
+  expression_pct_scale: "0-100"
+
+# Deprecated: use viewer_export. Kept so old configs keep working.
 export_seqviewer:
   enabled: true
   schema_version: "1.0"
@@ -84,11 +98,11 @@ exploration:
   top_n: 20                 # top cell types per gene (tables/plots)
 
 # ── Full expression export (viewer exploration, optional) ──
-# Aggregated gene x cell_type table (no cell-level values). Enables GUI
-# exploration of any gene without a predefined panel.
+# Aggregated gene x cell_type table (no cell-level values). Usually triggered
+# by viewer_export.expression: true; `enabled` is the legacy switch.
 expression_export:
   enabled: false
-  cell_type_column: "C185_named"
+  cell_type_column: "cell_type"
   cell_types: null          # null = all
   genes: null               # null = all
   by_dataset: false         # add per-dataset rows
@@ -103,7 +117,6 @@ expression_export:
   drop_zero_rows: true      # omit long rows with n_expressing = 0
   gene_id_type: "symbol"
   format: "parquet"         # "parquet" | "csv"
-  species: "mouse"
   # Static summary figures (09_plot_expression.R)
   plots: true
   plots_top_genes: 50       # genes per heatmap (top-enriched selection)

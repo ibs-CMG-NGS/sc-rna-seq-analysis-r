@@ -44,8 +44,10 @@ optional_modules:
   label_transfer: false
   exploration: false
 
-export_seqviewer:
+viewer_export:
   enabled: true
+  analysis: true
+  expression: false
   schema_version: "1.0"
 
 de_analysis:

@@ -89,13 +89,35 @@ de_analysis:
 
 ## cmg-seqviewer 연동 (export)
 
-`export_seqviewer` rule이 `output/<실험명>/export/seqviewer/`에 뷰어 번들을 만듭니다 (config의 `export_seqviewer.enabled`로 끌 수 있음).
+`viewer_export` 하나로 분석 결과와 탐색용 발현 요약을 같은 Import Folder에 내보냅니다.
 
-- `seqviewer_manifest.json`: 데이터셋 목록 (`datasets` 배열, `dataset_type` 명시)
-- `datasets/*.parquet`: 데이터셋 파일
-- `export_index.tsv`: 파일별 유형·세포타입·조건 목록
-- `COLUMNS.md`: 컬럼 규약 (schema_version 기록)
-- `export_complete.flag`: 완료 표시
+```yaml
+viewer_export:
+  enabled: true
+  analysis: true            # DE / GO·KEGG / composition / Multi-Group
+  expression: true          # 전체 gene x cell_type 평균 발현 요약
+  schema_version: "1.0"
+  expression_prefix: "my_experiment"
+  expression_alias: "My experiment mean expression"
+  expression_cell_type_level: "C185"
+  expression_primary: "wide"        # wide | long
+  expression_include_long: false    # wide일 때 long 테이블도 추가
+  expression_pct_scale: "0-100"
+```
+
+- `analysis: true`는 `modules.pseudobulk_de`가 켜져 있어야 합니다.
+- `expression: true`는 `expression_export` 설정을 사용해 전체 발현 요약을 자동 실행합니다.
+- 두 결과는 내부에서 별도로 생성된 뒤 **하나의 manifest**로 병합됩니다.
+- 출력은 항상 `output/<실험명>/export/seqviewer/` 한 곳입니다.
+
+```text
+export/seqviewer/
+├── seqviewer_manifest.json      # 모든 데이터셋 목록
+├── datasets/*.parquet
+├── export_index.tsv             # 파일별 유형·세포타입·조건 목록
+├── COLUMNS.md                   # 컬럼 규약
+└── export_complete.flag
+```
 
 | 파일 | dataset_type | 내용 |
 |---|---|---|
@@ -103,8 +125,14 @@ de_analysis:
 | `ENR__<cell_type>_<contrast>__GO_<ONT>_<up\|down>.parquet`, KEGG 동일 패턴 | go_analysis | GO/KEGG 결과 (세포타입 × contrast × 방향) |
 | `COMP__propeller.parquet` | composition | 세포타입 비율 검정 (propeller) |
 | `MG__<cell_type>.parquet` | multi_group | pseudobulk raw count, 샘플 열은 `<condition>_<rep>` |
+| `<prefix>_wide_mean.parquet` (wide) 또는 `<prefix>_long.parquet` (long) | expression_summary | 전체 gene × cell_type 평균 발현 |
+| `<prefix>_wide_pct.parquet`, `<prefix>_gene_index.parquet`, `<prefix>_cell_type_summary.parquet` | companion | layout에 따라 일부만 생성되는 부속 파일 |
 
 뷰어에서는 `output/<실험명>/export/seqviewer/` 폴더 자체를 **Import Folder**로 선택합니다. `metadata.json`이 아니라 `seqviewer_manifest.json`을 읽습니다.
+
+> 현재 public cmg-seqviewer HEAD(v1.3.2)는 `composition`과 `expression_summary`를 지원하지 않습니다. 해당 타입을 지원하는 뷰어 버전에서는 같은 폴더를 그대로 Import할 수 있습니다.
+>
+> 기존 `export_seqviewer` / `expression_export.enabled` 설정은 하위 호환을 위해 계속 동작합니다. 새 config는 `viewer_export` 사용을 권장합니다.
 
 ---
 

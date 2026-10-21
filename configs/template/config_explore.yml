@@ -52,9 +52,16 @@ exploration:
   assay: "RNA"
   top_n: 20
 
-# 비교 결과가 없으므로 뷰어 export는 끕니다.
-export_seqviewer:
-  enabled: false
+# 탐색 결과를 viewer에서 보려면 expression summary를 export합니다.
+# (DE/GO/composition/MG가 없으므로 analysis: false)
+viewer_export:
+  enabled: true
+  analysis: false
+  expression: true
+  expression_prefix: "my_explore"
+  expression_alias: "My exploration mean expression"
+  expression_cell_type_level: ""
+  expression_pct_scale: "0-100"
 
 report:
   title: "scRNA-seq 탐색 분석 리포트"

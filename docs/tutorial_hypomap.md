@@ -971,13 +971,28 @@ wsl --shutdown
 
 #### C-1. export 활성화
 
-예제 config(`configs/tutorial/hypomap_dowsett_compare.yml`)는 이미 켜져 있습니다.
-다른 config에서 사용하려면 다음을 추가합니다.
+분석 결과와 탐색용 발현 요약을 **하나의 `viewer_export` 설정**으로 내보냅니다.
+예제 비교 config(`configs/tutorial/hypomap_dowsett_compare.yml`)는 이미 켜져 있습니다.
 
 ```yaml
-export_seqviewer:
+viewer_export:
   enabled: true
+  analysis: true            # DE / GO·KEGG / composition / Multi-Group
+  expression: false         # 전체 gene x cell_type 발현 요약
   schema_version: "1.0"
+```
+
+탐색 결과를 viewer에서 보려면 `analysis: false`, `expression: true`로 바꿉니다.
+
+```yaml
+viewer_export:
+  enabled: true
+  analysis: false
+  expression: true
+  expression_prefix: "hypomap_C185_explore"
+  expression_alias: "HypoMap C185 exploration mean expression"
+  expression_cell_type_level: "C185"
+  expression_pct_scale: "0-100"
 ```
 
 그다음 파이프라인을 다시 실행합니다.
@@ -988,17 +1003,21 @@ bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
 
 #### C-2. 무엇이 export되나
 
-출력 위치는 `output/<실험명>/export/seqviewer/`입니다.
+출력 위치는 항상 `output/<실험명>/export/seqviewer/` 한 곳입니다.
 
 ```text
 output/tutorial_compare/export/seqviewer/
-├── seqviewer_manifest.json      # 뷰어가 읽는 데이터셋 목록
+├── seqviewer_manifest.json      # 모든 데이터셋 목록 (analysis + expression)
 ├── datasets/
 │   ├── DE__<세포타입>__<contrast>.parquet
 │   ├── ENR__<세포타입>_<contrast>__GO_<BP|CC|MF>_<up|down>.parquet
 │   ├── ENR__<세포타입>_<contrast>__KEGG_<up|down>.parquet
 │   ├── COMP__propeller.parquet
-│   └── MG__<세포타입>.parquet
+│   ├── MG__<세포타입>.parquet
+│   ├── <prefix>_wide_mean.parquet          # expression: true일 때
+│   ├── <prefix>_wide_pct.parquet
+│   ├── <prefix>_gene_index.parquet
+│   └── <prefix>_cell_type_summary.parquet
 ├── export_index.tsv             # 파일별 유형·세포타입·조건 목록
 ├── COLUMNS.md                   # 컬럼 규약
 └── export_complete.flag         # export 완료 표시
@@ -1010,10 +1029,15 @@ output/tutorial_compare/export/seqviewer/
 | `go_analysis` | GO BP/CC/MF + KEGG, up/down | 48개 |
 | `multi_group` | pseudobulk raw count, 샘플 열 포함 | 10개 |
 | `composition` | propeller 세포 조성 검정 | 1개 |
+| `expression_summary` | 전체 gene × cell_type 평균 발현 (wide 또는 long) | `expression: true`일 때 |
 
-예제 비교 분석(`10`개 세포타입, `Fasted` vs `Normal chow`)에서는 총 **69개**
-데이터셋이 생성되었습니다. 데이터셋 수는 세포타입 수, contrast 수, enrichment
-결과 유무에 따라 달라집니다.
+`expression_primary: long`이면 `<prefix>_wide_mean.parquet` 대신
+`<prefix>_long.parquet`이 생성되고, 부속 파일도 long layout에 맞게
+`gene_index`/`cell_type_summary`만 포함됩니다.
+
+예제 비교 분석(`10`개 세포타입, `Fasted` vs `Normal chow`, `expression: false`)에서는
+총 **69개** 데이터셋이 생성되었습니다. 데이터셋 수는 세포타입 수, contrast 수,
+enrichment 결과 유무, `expression` 설정에 따라 달라집니다.
 
 #### C-3. 뷰어에 Import
 
@@ -1024,45 +1048,42 @@ output/tutorial_compare/export/seqviewer/
 4. Import 결과에서 데이터셋 수와 유형을 확인합니다.
 
 > **현재 호환성 (2026-10-21 검증 기준)**
-> public cmg-seqviewer HEAD(v1.3.2)는 `composition` dataset type을 아직 지원하지
-> 않습니다. 따라서 위 69개 중 DE/GO/Multi-Group **68개는 정상 반입**되고,
-> `COMP__propeller.parquet` 1개만 `missing`으로 표시됩니다.
-> export 자체는 정상이며 composition parquet도 보존됩니다. 뷰어팀이
-> `composition`을 지원하는 버전을 제공하면 같은 폴더를 다시 Import하면 됩니다.
+> public cmg-seqviewer HEAD(v1.3.2)는 `composition`과 `expression_summary`
+> dataset type을 아직 지원하지 않습니다. 따라서 위 69개 중 DE/GO/Multi-Group
+> **68개는 정상 반입**되고, `COMP__propeller.parquet` 1개만 `missing`으로 표시됩니다.
+> `expression: true`인 실행에서는 expression summary도 skip됩니다.
+> export 자체는 정상이며 parquet 파일은 모두 보존됩니다. 해당 타입을 지원하는
+> 뷰어 버전에서는 같은 폴더를 다시 Import하면 됩니다.
 
-#### C-4. 전체 유전자 expression summary 번들 (별도)
+#### C-4. 전체 유전자 탐색 번들
 
-DE/GO 번들과 별도로, **전체 유전자 × 세포타입 평균 발현**을 뷰어에서 탐색하려면
-`expression_export` 모듈을 사용합니다. 이 번들은 DE 결과가 아니라 발현 요약
-(mean, percent expressing)입니다.
+`expression: true`로 실행하면 `expression_export` 설정을 사용해
+전체 gene × cell_type 평균 발현을 같은 `export/seqviewer/` 폴더에 추가합니다.
+별도로 `08_build_viewer_bundle.R`을 실행할 필요가 없습니다.
 
 ```yaml
-expression_export:
+viewer_export:
   enabled: true
-  cell_type_column: "cell_type"   # 입력 객체의 세포타입 컬럼명
+  analysis: false
+  expression: true
+  expression_prefix: "hypomap_C185"
+  expression_alias: "HypoMap C185 mean expression"
+  expression_cell_type_level: "C185"
+  expression_pct_scale: "0-100"
+
+expression_export:
+  cell_type_column: "C185_named"   # 입력 객체의 세포타입 컬럼명
   min_cells: 10
+  genes: null                      # null = 전체 유전자
 ```
 
-```bash
-bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
-```
-
-그다음 export 결과를 뷰어 번들로 조립합니다.
-
-```bash
-Rscript scripts/08_build_viewer_bundle.R \
-  --export_dir output/tutorial_compare/export/expression \
-  --bundle_dir output/tutorial_compare/export/viewer/hypomap_dowsett \
-  --prefix hypomap_dowsett \
-  --alias "HypoMap Dowsett mean expression" \
-  --cell_type_level C66 \
-  --pct_scale 0-100
-```
-
-생성된 `output/tutorial_compare/export/viewer/hypomap_dowsett/` 폴더도
-`seqviewer_manifest.json`을 포함하므로 **Import Folder**로 반입할 수 있습니다.
 전체 HypoMap(수십만 세포)에서 실행하면 시간과 RAM 사용량이 크므로, 먼저
-subset에서 확인한 뒤 전체로 확장하는 것을 권장합니다.
+subset에서 확인한 뒤 전체로 확장하는 것을 권장합니다. 이미 만들어 둔 전체
+HypoMap C185 탐색 번들은 다음 폴더에 있습니다.
+
+```text
+/home/ygkim/ngs-pipeline/scran-seq-analysis/output/hypomap_expression/export/seqviewer
+```
 
 자세한 파일 규격과 컬럼 정의는 `README.md`의 "cmg-seqviewer 연동" 섹션과
 `COLUMNS.md`를 참고하세요.
