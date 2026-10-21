@@ -1,6 +1,11 @@
 # ============================================================
-# scRNA-seq 3rd Analysis Pipeline - Template Config
-# Copy to configs/config_<experiment>.yml and fill in values.
+# scRNA-seq 3rd Analysis Pipeline - Base Config
+#
+# This file is always loaded by the Snakefile as the default.
+# For a new run, copy one of the mode-specific starters:
+#   configs/template/config_explore.yml   (exploratory, no replicates)
+#   configs/template/config_compare.yml   (comparative statistics)
+# to configs/config_<experiment>.yml, then edit it.
 # configs/config_*.yml is gitignored.
 # ============================================================
 

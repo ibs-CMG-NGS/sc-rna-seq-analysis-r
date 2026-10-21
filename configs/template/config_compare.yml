@@ -1,0 +1,66 @@
+# ============================================================
+# 비교·통계 분석용 시작 config
+#
+# 사용법:
+#   cp configs/template/config_compare.yml configs/config_<실험명>.yml
+#   # configs/config_<실험명>.yml에서 input_path, condition, reference_level 수정
+#   bash run_pipeline.sh configs/config_<실험명>.yml --cores 8
+#
+# 이 파일은 Snakefile이 자동으로 읽는 configs/template/config.yml 위에
+# 덮어쓰이는 값만 담고 있습니다. 나머지 기본값은 config.yml을 참고하세요.
+#
+# 이 모드는 조건 간 발현(pseudobulk DE), 세포 조성(propeller),
+# 경로(GO/KEGG) 차이를 통계적으로 비교합니다.
+# 조건당 생물학적 샘플이 최소 2개(권장 3개 이상) 필요합니다.
+# ============================================================
+
+species: "mouse"                  # "human" | "mouse"
+output_dir: "output_compare"
+
+padj_cutoff: 0.05
+log2fc_cutoff: 1.0
+
+single_cell:
+  input_path: "path/to/annotated.rds"   # .rds(Seurat) 또는 .h5ad
+  input_format: "seurat"                # "seurat" | "anndata"
+  cell_type_column: "cell_type"
+  # 반드시 "세포 ID"가 아닌 "생물학적 샘플 ID"를 지정하세요.
+  sample_column: "sample_id"
+  condition_column: "condition"
+  cell_types: null                      # null = 전체; 해석은 10–20개 권장
+  min_cells_per_group: 10               # sample × cell_type 최소 세포 수
+  # counts_layer: "counts"              # .h5ad 입력일 때만 사용
+
+de_analysis:
+  method: "DESeq2"                      # "DESeq2" | "edgeR"
+  reference_level: "control"            # 기준 조건; 빈 문자열 = 알파벳 첫 번째
+  covariates: []                        # 예: ["batch", "sex"]
+
+enrichment:
+  go_ontologies: ["BP", "CC", "MF"]
+  run_kegg: true
+  pvalue_cutoff: 0.05
+  qvalue_cutoff: 0.2
+  min_gs_size: 10
+  max_gs_size: 500
+
+modules:
+  pseudobulk_de: true
+  composition: true
+  enrichment: true                      # pseudobulk_de가 true여야 함
+
+optional_modules:
+  exploration: false
+  trajectory: false
+  cell_communication: false
+  label_transfer: false
+
+# 비교 결과를 cmg-seqviewer로 export하려면 true.
+export_seqviewer:
+  enabled: true
+  schema_version: "1.0"
+
+report:
+  title: "scRNA-seq 비교 분석 리포트"
+  author: ""
+  generate_methods_draft: true

@@ -1,0 +1,62 @@
+# ============================================================
+# 탐색·서술 분석용 시작 config
+#
+# 사용법:
+#   cp configs/template/config_explore.yml configs/config_<실험명>.yml
+#   # configs/config_<실험명>.yml에서 input_path 등을 수정
+#   bash run_pipeline.sh configs/config_<실험명>.yml --cores 4
+#
+# 이 파일은 Snakefile이 자동으로 읽는 configs/template/config.yml 위에
+# 덮어쓰이는 값만 담고 있습니다. 나머지 기본값은 config.yml을 참고하세요.
+#
+# 이 모드는 생물학적 반복 없이 "유전자가 어느 세포타입에서 발현되는가"를
+# 요약합니다. p-value/FDR 같은 통계 검정은 수행하지 않습니다.
+# ============================================================
+
+species: "mouse"                  # "human" | "mouse"
+output_dir: "output_explore"
+
+single_cell:
+  input_path: "path/to/annotated.rds"   # .rds(Seurat) 또는 .h5ad
+  input_format: "seurat"                # "seurat" | "anndata"
+  cell_type_column: "cell_type"         # 세포타입 라벨 컬럼
+  # 현재 loader는 sample/condition 컬럼을 요구합니다.
+  # 실제 비교 설계가 없으면 더미 값을 넣으세요 (예: condition = "all").
+  sample_column: "sample_id"
+  condition_column: "condition"
+  cell_types: null                      # null = 전체 세포타입
+  min_cells_per_group: 10               # 그룹당 최소 세포 수
+  # counts_layer: "counts"              # .h5ad 입력일 때만 사용
+
+# 비교 통계 모듈은 모두 끕니다.
+modules:
+  pseudobulk_de: false
+  composition: false
+  enrichment: false
+
+optional_modules:
+  exploration: true
+  trajectory: false
+  cell_communication: false
+  label_transfer: false
+
+# 탐색할 유전자 패널과 요약 기준
+exploration:
+  enabled: true
+  genes: ["Agrp", "Pomc", "Glp1r", "Mc4r", "Oxt", "Avp"]
+  group_by: "cell_type"       # 세포타입 컬럼
+  split_by: "Dataset"         # dataset별 분해; "" = 끔
+  min_cells: 10
+  exclude_column: "Author_Exclude"
+  exclude_values: ["yes"]
+  assay: "RNA"
+  top_n: 20
+
+# 비교 결과가 없으므로 뷰어 export는 끕니다.
+export_seqviewer:
+  enabled: false
+
+report:
+  title: "scRNA-seq 탐색 분석 리포트"
+  author: ""
+  generate_methods_draft: false

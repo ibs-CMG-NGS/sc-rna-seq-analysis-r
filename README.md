@@ -36,6 +36,7 @@ Seurat (`.rds`) 또는 AnnData (`.h5ad`) 형식을 입력으로 받습니다. �
 - **비교 분석**은 `sample_column`이 **세포 ID가 아닌 생물학적 샘플 ID**여야 합니다. 조건당 샘플이 1개면 재현성 있는 통계 검정이 어렵습니다.
 - **둘 다** 켤 수 있습니다. 이 경우 탐색 결과와 비교 결과가 같은 HTML 리포트에 포함됩니다.
 - `modules.enrichment: true`는 `modules.pseudobulk_de: true`가 필요합니다.
+- 바로 복사해 쓸 수 있는 시작 파일: [config_explore.yml](configs/template/config_explore.yml), [config_compare.yml](configs/template/config_compare.yml)
 - 실행 예시와 실제 출력은 [HypoMap 튜토리얼](docs/tutorial_hypomap.md)의 **5장(탐색)**과 **6장(비교)**을 참고하세요.
 
 ### 탐색 전용 최소 설정
@@ -161,9 +162,22 @@ conda activate scrnaseq-analysis
 
 ### 3. Config 파일 작성
 
+먼저 분석 모드에 맞는 **시작 템플릿**을 복사합니다.
+
 ```bash
-cp configs/template/config.yml configs/config_<실험명>.yml
+# 탐색·서술 분석 (반복 불필요)
+cp configs/template/config_explore.yml configs/config_<실험명>.yml
+
+# 또는 비교·통계 분석 (조건당 생물학적 샘플 ≥2)
+cp configs/template/config_compare.yml configs/config_<실험명>.yml
 ```
+
+| 목적 | 시작 템플릿 | 핵심 설정 |
+|---|---|---|
+| 탐색·서술 | [`configs/template/config_explore.yml`](configs/template/config_explore.yml) | `modules.*: false`, `optional_modules.exploration: true` |
+| 비교·통계 | [`configs/template/config_compare.yml`](configs/template/config_compare.yml) | `modules.*: true`, `de_analysis.reference_level` |
+
+> `configs/template/config.yml`은 Snakefile이 항상 자동으로 읽는 **기본값**입니다. 위 두 템플릿은 그 위에 덮어쓸 값만 담고 있으므로, 복사한 파일에서 필요한 항목만 수정하면 됩니다.
 
 `configs/config_<실험명>.yml`을 열어 아래 항목을 수정합니다.
 
@@ -193,10 +207,10 @@ cp configs/template/config.yml configs/config_<실험명>.yml
 bash run_pipeline.sh configs/config_<실험명>.yml --cores 8
 ```
 
-**탐색 전용 실행** (생물학적 반복 불필요):
+**탐색 전용 실행** (생물학적 반복 불필요, 탐색 템플릿을 복사한 경우):
 
 ```bash
-bash run_pipeline.sh configs/config_explore.yml --cores 4
+bash run_pipeline.sh configs/config_<실험명>.yml --cores 4
 ```
 
 **Downstream만 재실행** (비교 분석에서 입력 로딩 생략, cutoff 변경 등):
@@ -214,6 +228,8 @@ snakemake --configfile configs/config_<실험명>.yml --cores 8 --rerun-incomple
 ---
 
 ## Config 주요 옵션
+
+전체 기본값은 [`configs/template/config.yml`](configs/template/config.yml)에 있습니다. 모드별 시작점은 [`config_explore.yml`](configs/template/config_explore.yml), [`config_compare.yml`](configs/template/config_compare.yml)을 사용하세요.
 
 ```yaml
 species: "human"          # "human" | "mouse"
