@@ -1,0 +1,76 @@
+# HypoMap tutorial — Part 2: comparative analysis (Normal chow vs Fasted).
+# Input is the comparison-ready subset made by examples/hypomap/subset_dowsett.R.
+#
+# Why not the whole atlas? Diet is confounded with Dataset: most datasets
+# contain only one diet. Dowsett10xnuc is the clean within-dataset contrast
+# (4 Normal chow vs 2 Fasted samples).
+
+species: "mouse"
+output_dir: "output_tutorial_compare"
+
+padj_cutoff: 0.05
+log2fc_cutoff: 1.0
+
+single_cell:
+  input_path: "data/hypomap/dowsett_subset.rds"
+  input_format: "seurat"
+  cell_type_column: "cell_type"
+  sample_column: "sample_id"
+  condition_column: "condition"
+  # Ten robust C66 cell types (>=10 cells in every sample); see tutorial
+  # section 7.3 for running all 43 robust types with `cell_types: null`.
+  cell_types:
+    - "C66-46: Agrp.GABA-4"
+    - "C66-19: Pomc.GLU-5"
+    - "C66-45: Ghrh.GABA-3"
+    - "C66-4: Trh.GLU-2"
+    - "C66-37: Crh.GABA-1"
+    - "C66-47: Sst.GABA-4"
+    - "C66-43: Nts.GABA-1"
+    - "C66-28: Mixed.GABA-2"
+    - "C66-53: Etnppl.Astrocytes"
+    - "C66-55: Ermn.Oligodendrocytes"
+  min_cells_per_group: 10
+  counts_layer: "counts"
+
+modules:
+  pseudobulk_de: true
+  composition: true
+  enrichment: true
+
+optional_modules:
+  trajectory: false
+  cell_communication: false
+  label_transfer: false
+  exploration: false
+
+export_seqviewer:
+  enabled: false
+  schema_version: "1.0"
+
+de_analysis:
+  method: "DESeq2"
+  reference_level: "Normal chow"
+  covariates: []
+
+enrichment:
+  go_ontologies: ["BP", "CC", "MF"]
+  run_kegg: true
+  pvalue_cutoff: 0.05
+  qvalue_cutoff: 0.2
+  min_gs_size: 10
+  max_gs_size: 500
+
+trajectory:
+  method: "monocle3"
+  root_cell_type: ""
+  root_cluster: ""
+
+cell_communication:
+  method: "CellChat"
+  conditions_to_compare: []
+
+report:
+  title: "HypoMap Tutorial — Normal chow vs Fasted (Dowsett10xnuc)"
+  author: ""
+  generate_methods_draft: true

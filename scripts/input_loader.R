@@ -150,6 +150,12 @@ if (!is.null(opt$cell_types) && tolower(opt$cell_types) != "null" && nchar(trimw
   message("[input_loader] Filtered to ", length(keep_types), " cell type(s): ", ncol(obj), " cells remain")
 }
 
+for (col in c(opt$cell_type_col, opt$sample_col, opt$condition_col)) {
+  if (is.factor(obj@meta.data[[col]])) {
+    obj@meta.data[[col]] <- droplevels(obj@meta.data[[col]])
+  }
+}
+
 # ── Check min cells per group ─────────────────────────────────────────────────
 group_counts <- table(
   obj@meta.data[[opt$cell_type_col]],

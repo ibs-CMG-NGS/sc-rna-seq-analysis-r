@@ -4,6 +4,9 @@ configs/config_*.yml
 # Output data
 output/
 
+# Downloaded datasets (e.g. HypoMap, tutorial inputs)
+data/
+
 # Logs
 logs/
 

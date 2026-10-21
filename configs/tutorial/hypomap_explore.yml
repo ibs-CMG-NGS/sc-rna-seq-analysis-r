@@ -1,0 +1,72 @@
+# HypoMap tutorial — Part 1: exploratory gene-panel analysis.
+# No biological replicates are required for this part.
+
+species: "mouse"
+output_dir: "output_tutorial_explore"
+
+padj_cutoff: 0.05
+log2fc_cutoff: 1.0
+
+single_cell:
+  input_path: "data/hypomap/hypoMap.rds"
+  input_format: "seurat"
+  cell_type_column: "C185_named"
+  sample_column: "Sample_ID"
+  condition_column: "Diet"
+  cell_types: null
+  min_cells_per_group: 10
+  counts_layer: "counts"
+
+# Exploratory-only: skip modules that need biological replicates.
+modules:
+  pseudobulk_de: false
+  composition: false
+  enrichment: false
+
+optional_modules:
+  trajectory: false
+  cell_communication: false
+  label_transfer: false
+  exploration: true
+
+exploration:
+  enabled: true
+  genes: ["Glp1r", "Pnoc", "Agrp", "Pomc", "Mc4r", "Hcrt", "Oxt", "Avp", "Sst", "Ghrh"]
+  group_by: "C185_named"
+  split_by: "Dataset"
+  min_cells: 10
+  exclude_column: "Author_Exclude"
+  exclude_values: ["yes"]
+  assay: "RNA"
+  top_n: 15
+
+export_seqviewer:
+  enabled: false
+  schema_version: "1.0"
+
+de_analysis:
+  method: "DESeq2"
+  reference_level: ""
+  covariates: []
+
+enrichment:
+  go_ontologies: ["BP", "CC", "MF"]
+  run_kegg: true
+  pvalue_cutoff: 0.05
+  qvalue_cutoff: 0.2
+  min_gs_size: 10
+  max_gs_size: 500
+
+trajectory:
+  method: "monocle3"
+  root_cell_type: ""
+  root_cluster: ""
+
+cell_communication:
+  method: "CellChat"
+  conditions_to_compare: []
+
+report:
+  title: "HypoMap Tutorial — Exploratory Analysis"
+  author: ""
+  generate_methods_draft: false

@@ -16,6 +16,7 @@ params:
   author:        ""
   padj_cutoff:   0.05
   log2fc_cutoff: 1.0
+  min_cells:     10
   species:       "human"
   run_traj:      FALSE
   run_comm:      TRUE
@@ -280,11 +281,11 @@ generate_methods_draft <- function(p) {
   } else ""
 
   de_txt <- if (p$run_de) {
-    glue::glue("\n\n### Pseudobulk Differential Expression\nPseudobulk differential expression analysis was performed using DESeq2 (Love et al., 2014) / edgeR (Robinson et al., 2010). For each cell type, read counts were aggregated per sample to form pseudobulk profiles. Samples with fewer than [MIN_CELLS] cells per cell type were excluded. Differentially expressed genes were identified using a negative binomial generalized linear model. Genes with adjusted p-value < {p$padj_cutoff} and |log2 fold change| >= {p$log2fc_cutoff} were considered significant.")
+    glue::glue("\n\n### Pseudobulk Differential Expression\nPseudobulk differential expression analysis was performed using DESeq2 (Love et al., 2014) / edgeR (Robinson et al., 2010). For each cell type, read counts were aggregated per sample to form pseudobulk profiles. Sample x cell-type groups with fewer than {p$min_cells} cells were flagged as low-coverage, and groups with fewer than 2 cells were excluded from pseudobulk aggregation. Differentially expressed genes were identified using a negative binomial generalized linear model. Genes with adjusted p-value < {p$padj_cutoff} and |log2 fold change| >= {p$log2fc_cutoff} were considered significant.")
   } else ""
 
   enr_txt <- if (p$run_enr) {
-    glue::glue("\n\n### Gene Set Enrichment Analysis\nGene ontology (GO) and KEGG pathway enrichment was performed using clusterProfiler (Wu et al., 2021; v4.x). Significant DE genes (adjusted p < {p$padj_cutoff}) were used as input. The OrgDb package {orgdb_pkg} was used for gene ID mapping (human) or org.Mm.eg.db (mouse). Enrichment terms with q-value < 0.2 were considered significant.")
+    glue::glue("\n\n### Gene Set Enrichment Analysis\nGene ontology (GO) and KEGG pathway enrichment was performed using clusterProfiler (Wu et al., 2021; v4.x). Significant DE genes (adjusted p < {p$padj_cutoff}) were used as input. The OrgDb package {orgdb_pkg} was used for gene ID mapping, and the KEGG organism code {kegg_code} was used for pathway enrichment. Enrichment terms with q-value < 0.2 were considered significant.")
   } else ""
 
   expl_txt <- if (p$run_explore) {
@@ -307,7 +308,7 @@ Processed single-cell RNA-seq data was loaded as a Seurat object (Stuart et al.,
 {comp_txt}{de_txt}{enr_txt}{expl_txt}{traj_txt}{comm_txt}
 
 ### Software
-Analyses were performed in R (v4.3+) using Seurat (v5.x), DESeq2, edgeR, clusterProfiler, speckle, and Snakemake (v7.x) for workflow management.
+Analyses were performed in R (v4.3+) using Seurat (v5.x), DESeq2, edgeR, clusterProfiler, speckle, and Snakemake for workflow management.
 
 ### References
 - Stuart T, et al. Cell. 2019.

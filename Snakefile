@@ -9,6 +9,16 @@ from pathlib import Path
 configfile: "configs/template/config.yml"
 
 
+def join_cfg(value, default="null"):
+    """Render a list/string config value for a comma-separated CLI argument."""
+    if value is None:
+        return default
+    if isinstance(value, (list, tuple)):
+        return ",".join(map(str, value)) if value else default
+    value = str(value).strip()
+    return value if value else default
+
+
 # ── Derived variables ──────────────────────────────────────────────────────────
 OUTPUT     = config["output_dir"]
 OPTIONAL   = config.get("optional_modules", {})
@@ -120,7 +130,7 @@ rule load_input:
         cell_type_col  = config["single_cell"]["cell_type_column"],
         sample_col     = config["single_cell"]["sample_column"],
         condition_col  = config["single_cell"]["condition_column"],
-        cell_types     = config["single_cell"].get("cell_types") or "null",
+        cell_types     = join_cfg(config["single_cell"].get("cell_types")),
         min_cells      = config["single_cell"]["min_cells_per_group"],
         counts_layer   = config["single_cell"].get("counts_layer", "counts"),
     shell:
@@ -520,6 +530,7 @@ rule report:
         methods_draft    = str(config["report"].get("generate_methods_draft", True)).upper(),
         padj             = config["padj_cutoff"],
         log2fc           = config["log2fc_cutoff"],
+        min_cells        = config["single_cell"]["min_cells_per_group"],
         species          = config["species"],
         run_traj         = str(RUN_TRAJ).upper(),
         run_comm         = str(RUN_COMM).upper(),
@@ -539,6 +550,7 @@ rule report:
                 author        = '{params.author}',
                 padj_cutoff   = {params.padj},
                 log2fc_cutoff = {params.log2fc},
+                min_cells     = {params.min_cells},
                 species       = '{params.species}',
                 run_traj      = {params.run_traj},
                 run_comm      = {params.run_comm},

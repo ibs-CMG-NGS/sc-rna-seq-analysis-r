@@ -72,6 +72,9 @@ Rscript scripts/install_mapscvi.R
 
 ## 시작하기
 
+> **처음 사용하는 분께**: 환경 설치부터 HypoMap 다운로드, 탐색적 분석, 비교 통계 분석까지
+> 단계별로 설명한 [HypoMap 튜토리얼](docs/tutorial_hypomap.md)을 먼저 따라 해 보세요.
+
 ### 1. 저장소 클론
 
 ```bash
