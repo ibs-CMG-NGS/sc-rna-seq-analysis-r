@@ -10,7 +10,7 @@
 
 - 본 파이프라인: `ibs-CMG-NGS/sc-rna-seq-analysis-r` (R/Seurat + Snakemake, **3차 분석 전용**)
   — 기존 `sc-rna-seq-analysis`(Scanpy판)과는 **별개 구현**입니다.
-- 연동 원칙: **뷰어는 Seurat/h5ad를 직접 읽지 않습니다.** 본 파이프라인이 뷰어의 기존 스키마(DE / GO·KEGG / Multi-Group)로 reshape한 **parquet + manifest**를 `output/export/seqviewer/`에 내보내고, 뷰어가 이를 소비합니다.
+- 연동 원칙: **뷰어는 Seurat/h5ad를 직접 읽지 않습니다.** 본 파이프라인이 뷰어의 기존 스키마(DE / GO·KEGG / Multi-Group)로 reshape한 **parquet + manifest**를 `output/<run>/export/seqviewer/`에 내보내고, 뷰어가 이를 소비합니다.
 - 기대 효과: 세포타입별 DE/GO 결과를 DB에 적재 → **Cell Type / Organism / Tags 검색** + **Cross-Dataset Comparison**(세포타입 간 비교) + Volcano/Dot plot 등 기존 기능 재사용.
 
 ## 2. 확인한 사항 (문서 기준)

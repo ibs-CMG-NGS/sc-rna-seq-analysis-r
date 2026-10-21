@@ -89,7 +89,7 @@ de_analysis:
 
 ## cmg-seqviewer 연동 (export)
 
-`export_seqviewer` rule이 `output/export/seqviewer/`에 뷰어 번들을 만듭니다 (config의 `export_seqviewer.enabled`로 끌 수 있음).
+`export_seqviewer` rule이 `output/<실험명>/export/seqviewer/`에 뷰어 번들을 만듭니다 (config의 `export_seqviewer.enabled`로 끌 수 있음).
 
 - `seqviewer_manifest.json`: 데이터셋 목록 (`datasets` 배열, `dataset_type` 명시)
 - `datasets/*.parquet`: 데이터셋 파일
@@ -104,7 +104,7 @@ de_analysis:
 | `COMP__propeller.parquet` | composition | 세포타입 비율 검정 (propeller) |
 | `MG__<cell_type>.parquet` | multi_group | pseudobulk raw count, 샘플 열은 `<condition>_<rep>` |
 
-뷰어에서는 `output/export/seqviewer/` 폴더 자체를 **Import Folder**로 선택합니다. `metadata.json`이 아니라 `seqviewer_manifest.json`을 읽습니다.
+뷰어에서는 `output/<실험명>/export/seqviewer/` 폴더 자체를 **Import Folder**로 선택합니다. `metadata.json`이 아니라 `seqviewer_manifest.json`을 읽습니다.
 
 ---
 
@@ -128,7 +128,7 @@ Rscript scripts/install_mapscvi.R
 # 3) config에서 optional_modules.label_transfer: true 설정 후 실행
 ```
 
-출력: `output/label_transfer/` 아래 `annotated.rds` (predicted + prediction_probability 반영, `cell_type` 컬럼이 없었던 경우에만 predictions로 채움) + `label_provenance.csv` (세포별 라벨·확률) + `label_provenance.yml` (모델 경로, 패키지 버전, input 형태 등 재현성 정보).
+출력: `output/<실험명>/label_transfer/` 아래 `annotated.rds` (predicted + prediction_probability 반영, `cell_type` 컬럼이 없었던 경우에만 predictions로 채움) + `label_provenance.csv` (세포별 라벨·확률) + `label_provenance.yml` (모델 경로, 패키지 버전, input 형태 등 재현성 정보).
 </details>
 
 **bulk RNA-seq 파이프라인과의 일관성 유지:**
