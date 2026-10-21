@@ -15,7 +15,7 @@
 # ============================================================
 
 species: "mouse"                  # "human" | "mouse"
-output_dir: "output_compare"
+output_dir: "output/my_compare"   # 실험명에 맞게 변경
 
 padj_cutoff: 0.05
 log2fc_cutoff: 1.0

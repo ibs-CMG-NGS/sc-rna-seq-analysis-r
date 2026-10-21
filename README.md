@@ -233,7 +233,7 @@ snakemake --configfile configs/config_<실험명>.yml --cores 8 --rerun-incomple
 
 ```yaml
 species: "human"          # "human" | "mouse"
-output_dir: "output"
+output_dir: "output/my_experiment"   # 항상 output/<실험명>
 
 padj_cutoff:   0.05       # DE 유의성 기준 (bulk 파이프라인과 동일 키)
 log2fc_cutoff: 1.0
@@ -286,46 +286,49 @@ report:
 
 ## 출력 디렉토리 구조
 
+`output_dir`은 **`output/<실험명>`** 형태로 지정합니다. 실행별 결과가 최상위 `output/` 아래에 서브폴더로 분리됩니다.
+
 ```
 output/
-├── config_used.yml                  # 실행 시 config 스냅샷
-├── loaded/
-│   └── seurat_validated.rds         # 검증된 Seurat 객체
-├── pseudobulk_de/
-│   ├── de_<cell_type>.csv           # 세포 유형별 DE 결과
-│   ├── de_all_celltypes.csv         # 전체 통합 DE 결과
-│   ├── de_significant.csv           # 유의 유전자만 (padj + log2FC 필터)
-│   └── plots/
-│       └── volcano_<ct>_<contrast>.png
-├── composition/
-│   ├── cell_type_proportions.csv
-│   ├── propeller_results.csv
-│   └── plots/
-│       ├── composition_bar.png
-│       └── composition_by_celltype.png
-├── enrichment/
-│   ├── <ct>_<contrast>_GO_BP_up.csv
-│   ├── <ct>_<contrast>_KEGG_down.csv
-│   └── plots/
-│       └── <ct>/
-├── trajectory/                      # optional_modules.trajectory: true 시
-│   ├── pseudotime_monocle3.csv
-│   ├── monocle3_cds.rds
-│   └── plots/
-├── cell_communication/              # optional_modules.cell_communication: true 시
-│   ├── lr_interactions_<condition>.csv
-│   ├── cellchat_<condition>.rds
-│   └── plots/
-├── export/
-│   └── seqviewer/                   # cmg-seqviewer Import Folder
-│       ├── seqviewer_manifest.json
-│       ├── datasets/*.parquet
-│       ├── export_index.tsv
-│       ├── COLUMNS.md
-│       └── export_complete.flag
-└── report/
-    ├── report.html
-    └── methods_draft.md             # 논문 Methods 초안 자동 생성
+└── <실험명>/                        # config의 output_dir (예: output/tutorial_compare)
+    ├── config_used.yml              # 실행 시 config 스냅샷
+    ├── loaded/
+    │   └── seurat_validated.rds     # 검증된 Seurat 객체
+    ├── pseudobulk_de/
+    │   ├── de_<cell_type>.csv       # 세포 유형별 DE 결과
+    │   ├── de_all_celltypes.csv     # 전체 통합 DE 결과
+    │   ├── de_significant.csv       # 유의 유전자만 (padj + log2FC 필터)
+    │   └── plots/
+    │       └── volcano_<ct>_<contrast>.png
+    ├── composition/
+    │   ├── cell_type_proportions.csv
+    │   ├── propeller_results.csv
+    │   └── plots/
+    │       ├── composition_bar.png
+    │       └── composition_by_celltype.png
+    ├── enrichment/
+    │   ├── <ct>_<contrast>_GO_BP_up.csv
+    │   ├── <ct>_<contrast>_KEGG_down.csv
+    │   └── plots/
+    │       └── <ct>/
+    ├── trajectory/                  # optional_modules.trajectory: true 시
+    │   ├── pseudotime_monocle3.csv
+    │   ├── monocle3_cds.rds
+    │   └── plots/
+    ├── cell_communication/          # optional_modules.cell_communication: true 시
+    │   ├── lr_interactions_<condition>.csv
+    │   ├── cellchat_<condition>.rds
+    │   └── plots/
+    ├── export/
+    │   └── seqviewer/               # cmg-seqviewer Import Folder
+    │       ├── seqviewer_manifest.json
+    │       ├── datasets/*.parquet
+    │       ├── export_index.tsv
+    │       ├── COLUMNS.md
+    │       └── export_complete.flag
+    └── report/
+        ├── report.html
+        └── methods_draft.md         # 논문 Methods 초안 자동 생성
 ```
 
 ---
@@ -344,7 +347,7 @@ Rscript -e "
   saveRDS(obj, 'test_pbmc3k.rds')
 "
 
-cp configs/template/config.yml configs/config_test.yml
+cp configs/template/config_compare.yml configs/config_test.yml
 # config_test.yml에서 input_path: "test_pbmc3k.rds" 로 수정 후:
 bash run_pipeline.sh configs/config_test.yml --cores 4
 ```

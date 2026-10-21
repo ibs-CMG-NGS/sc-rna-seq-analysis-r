@@ -2,7 +2,7 @@
 # No biological replicates are required for this part.
 
 species: "mouse"
-output_dir: "output_tutorial_explore"
+output_dir: "output/tutorial_explore"
 
 padj_cutoff: 0.05
 log2fc_cutoff: 1.0

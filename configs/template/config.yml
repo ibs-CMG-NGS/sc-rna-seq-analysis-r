@@ -11,7 +11,7 @@
 
 # ── General ────────────────────────────────────────────────
 species: "human"          # "human" | "mouse"
-output_dir: "output"
+output_dir: "output/my_experiment"   # 실행별 하위 폴더
 
 # DE cutoffs (top-level for consistency with bulk pipeline)
 padj_cutoff: 0.05

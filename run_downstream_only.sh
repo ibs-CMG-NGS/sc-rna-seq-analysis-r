@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run_downstream_only.sh
-# Skip input loading (assume output/loaded/seurat_validated.rds exists).
+# Skip input loading (assume <output_dir>/loaded/seurat_validated.rds exists).
 # Useful for re-running DE / enrichment with different cutoffs.
 # Usage: bash run_downstream_only.sh <config_file> [snakemake_extra_args]
 

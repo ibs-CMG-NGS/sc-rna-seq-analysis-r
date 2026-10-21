@@ -28,5 +28,5 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Experiment output directories
+# Legacy root-level output directories (new runs use output/<run>/)
 output_*/

@@ -6,7 +6,7 @@
 # (4 Normal chow vs 2 Fasted samples).
 
 species: "mouse"
-output_dir: "output_tutorial_compare"
+output_dir: "output/tutorial_compare"
 
 padj_cutoff: 0.05
 log2fc_cutoff: 1.0

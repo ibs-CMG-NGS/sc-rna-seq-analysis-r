@@ -436,6 +436,8 @@ Glp1r, Pnoc, Agrp, Pomc, Mc4r, Hcrt, Oxt, Avp, Sst, Ghrh
 `configs/tutorial/hypomap_explore.yml`을 사용합니다. 핵심 부분만 보면:
 
 ```yaml
+output_dir: "output/tutorial_explore"
+
 single_cell:
   input_path: "data/hypomap/hypoMap.rds"
   cell_type_column: "C185_named"
@@ -476,21 +478,22 @@ bash run_pipeline.sh configs/tutorial/hypomap_explore.yml --cores 4
 ### 5.4 출력
 
 ```text
-output_tutorial_explore/
-├── config_used.yml
-├── exploration/
-│   ├── gene_expression_by_celltype.csv
-│   ├── gene_expression_by_celltype_dataset.csv
-│   ├── top_celltypes.csv
-│   ├── summary.txt
-│   └── plots/
-│       ├── bar_Agrp.png
-│       ├── bar_Glp1r.png
-│       ├── ...
-│       ├── dotplot.png
-│       └── heatmap_top_celltypes.png
-└── report/
-    └── report.html
+output/
+└── tutorial_explore/
+    ├── config_used.yml
+    ├── exploration/
+    │   ├── gene_expression_by_celltype.csv
+    │   ├── gene_expression_by_celltype_dataset.csv
+    │   ├── top_celltypes.csv
+    │   ├── summary.txt
+    │   └── plots/
+    │       ├── bar_Agrp.png
+    │       ├── bar_Glp1r.png
+    │       ├── ...
+    │       ├── dotplot.png
+    │       └── heatmap_top_celltypes.png
+    └── report/
+        └── report.html
 ```
 
 ### 5.5 결과표 읽기
@@ -544,7 +547,7 @@ Glp1r은 `C185-113: Nkx2-4.GABA-3`에서 30.2%로 가장 높게 나옵니다.
 
 ### 체크포인트 5
 
-- [ ] `output_tutorial_explore/exploration/`에 CSV 4개와 plot 12개 생성
+- [ ] `output/tutorial_explore/exploration/`에 CSV 4개와 plot 12개 생성
 - [ ] `summary.txt`에 `Cells used: 356456`, `185 groups` 표시
 - [ ] `report/report.html`이 열림
 
@@ -604,6 +607,8 @@ Normal chow      Fasted
 `configs/tutorial/hypomap_dowsett_compare.yml`을 사용합니다. 핵심 부분:
 
 ```yaml
+output_dir: "output/tutorial_compare"
+
 single_cell:
   input_path: "data/hypomap/dowsett_subset.rds"
   cell_type_column: "cell_type"
@@ -655,33 +660,34 @@ Enrichment가 대부분의 시간을 차지합니다. 정상입니다.
 ### 6.5 출력 구조
 
 ```text
-output_tutorial_compare/
-├── config_used.yml
-├── loaded/
-│   └── seurat_validated.rds
-├── pseudobulk_de/
-│   ├── pseudobulk_counts.rds
-│   ├── pseudobulk_counts.tsv
-│   ├── de_all_celltypes.csv
-│   ├── de_significant.csv
-│   ├── de_<cell_type>.csv
-│   └── plots/
-│       └── volcano_<cell_type>_<contrast>.png
-├── composition/
-│   ├── cell_type_proportions.csv
-│   ├── propeller_results.csv
-│   └── plots/
-│       ├── composition_bar.png
-│       └── composition_by_celltype.png
-├── enrichment/
-│   ├── <cell_type>_GO_BP_up.csv
-│   ├── <cell_type>_GO_BP_down.csv
-│   ├── <cell_type>_KEGG_up.csv
-│   ├── <cell_type>_KEGG_down.csv
-│   └── plots/
-└── report/
-    ├── report.html
-    └── methods_draft.md
+output/
+└── tutorial_compare/
+    ├── config_used.yml
+    ├── loaded/
+    │   └── seurat_validated.rds
+    ├── pseudobulk_de/
+    │   ├── pseudobulk_counts.rds
+    │   ├── pseudobulk_counts.tsv
+    │   ├── de_all_celltypes.csv
+    │   ├── de_significant.csv
+    │   ├── de_<cell_type>.csv
+    │   └── plots/
+    │       └── volcano_<cell_type>_<contrast>.png
+    ├── composition/
+    │   ├── cell_type_proportions.csv
+    │   ├── propeller_results.csv
+    │   └── plots/
+    │       ├── composition_bar.png
+    │       └── composition_by_celltype.png
+    ├── enrichment/
+    │   ├── <cell_type>_GO_BP_up.csv
+    │   ├── <cell_type>_GO_BP_down.csv
+    │   ├── <cell_type>_KEGG_up.csv
+    │   ├── <cell_type>_KEGG_down.csv
+    │   └── plots/
+    └── report/
+        ├── report.html
+        └── methods_draft.md
 ```
 
 ### 6.6 Pseudobulk DE 결과 읽기
@@ -817,7 +823,7 @@ cutoff만 바꿔 DE/enrichment를 다시 돌릴 때 사용합니다.
 bash run_downstream_only.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
 ```
 
-이 스크립트는 `output_tutorial_compare/loaded/seurat_validated.rds`가 이미 있을 때만 동작합니다.
+이 스크립트는 `output/tutorial_compare/loaded/seurat_validated.rds`가 이미 있을 때만 동작합니다.
 
 ### 7.2 Cutoff 변경
 
@@ -872,7 +878,7 @@ bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4 -F
 또는 출력 디렉토리를 지우고 실행합니다.
 
 ```bash
-rm -rf output_tutorial_compare
+rm -rf output/tutorial_compare
 bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
 ```
 
@@ -969,7 +975,7 @@ bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
 출력:
 
 ```text
-output_tutorial_compare/export/seqviewer/
+output/tutorial_compare/export/seqviewer/
 ├── seqviewer_manifest.json
 ├── datasets/
 │   ├── DE__*.parquet
@@ -988,8 +994,8 @@ output_tutorial_compare/export/seqviewer/
 
 ```bash
 Rscript scripts/08_build_viewer_bundle.R \
-  --export_dir output_tutorial_compare/export/expression \
-  --bundle_dir output_tutorial_compare/export/viewer/hypomap_dowsett \
+  --export_dir output/tutorial_compare/export/expression \
+  --bundle_dir output/tutorial_compare/export/viewer/hypomap_dowsett \
   --prefix hypomap_dowsett \
   --alias "HypoMap Dowsett mean expression" \
   --cell_type_level C66 \
