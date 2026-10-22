@@ -6,6 +6,7 @@
 # Inputs are produced by:
 #   - scripts/06_export_seqviewer.R  (analysis staging)
 #   - scripts/08_build_viewer_bundle.R (expression staging)
+#   - scripts/13_export_distribution.R (pseudobulk distribution staging)
 #
 # Output layout:
 #   <output_dir>/seqviewer_manifest.json
@@ -20,10 +21,11 @@ suppressPackageStartupMessages({
 })
 
 opt_list <- list(
-  make_option("--analysis_dir",   type = "character", default = ""),
-  make_option("--expression_dir", type = "character", default = ""),
-  make_option("--output_dir",     type = "character", help = "Final Import Folder"),
-  make_option("--schema_version", type = "character", default = "1.0")
+  make_option("--analysis_dir",     type = "character", default = ""),
+  make_option("--expression_dir",   type = "character", default = ""),
+  make_option("--distribution_dir", type = "character", default = ""),
+  make_option("--output_dir",       type = "character", help = "Final Import Folder"),
+  make_option("--schema_version",   type = "character", default = "1.0")
 )
 opt <- parse_args(OptionParser(option_list = opt_list))
 if (!nzchar(opt$output_dir)) stop("--output_dir is required", call. = FALSE)
@@ -78,6 +80,7 @@ copy_items <- function(items, src_dir, label, seen_files, seen_ids) {
     copy_one(fp, src_dir, label, seen_files, duplicate_is_error = TRUE)
 
     companions <- item$expression_schema$companion_files
+    if (is.null(companions)) companions <- item$distribution_schema$companion_files
     if (!is.null(companions) && length(companions)) {
       for (cfp in unlist(companions, use.names = FALSE)) {
         copy_one(cfp, src_dir, label, seen_files, duplicate_is_error = FALSE)
@@ -94,15 +97,17 @@ copy_items <- function(items, src_dir, label, seen_files, seen_ids) {
   }
 }
 
-analysis_items   <- read_manifest(opt$analysis_dir)
-expression_items <- read_manifest(opt$expression_dir)
-entries <- c(analysis_items, expression_items)
+analysis_items     <- read_manifest(opt$analysis_dir)
+expression_items   <- read_manifest(opt$expression_dir)
+distribution_items <- read_manifest(opt$distribution_dir)
+entries <- c(analysis_items, expression_items, distribution_items)
 if (!length(entries)) stop("[merge] no datasets to merge", call. = FALSE)
 
 seen_files <- new.env(parent = emptyenv())
 seen_ids   <- new.env(parent = emptyenv())
-copy_items(analysis_items,   opt$analysis_dir,   "analysis",   seen_files, seen_ids)
-copy_items(expression_items, opt$expression_dir, "expression", seen_files, seen_ids)
+copy_items(analysis_items,     opt$analysis_dir,     "analysis",     seen_files, seen_ids)
+copy_items(expression_items,   opt$expression_dir,   "expression",   seen_files, seen_ids)
+copy_items(distribution_items, opt$distribution_dir, "distribution", seen_files, seen_ids)
 
 write_json(
   list(schema_version = opt$schema_version, datasets = entries),
@@ -189,9 +194,33 @@ if (length(expr_items)) {
     )
   }
 }
+
+dist_items <- Filter(function(x) identical(as_scalar(x$dataset_type), "expression_distribution"), entries)
+if (length(dist_items)) {
+  columns_md <- c(
+    columns_md,
+    "",
+    "## expression_distribution (per-sample pseudobulk)",
+    "",
+    "One row = gene x cell_type x sample. Companion files are listed in",
+    "`distribution_schema.companion_files`.",
+    "",
+    "| column | notes |",
+    "| --- | --- |",
+    "| gene_id, gene_name | gene symbol |",
+    "| cell_type | cell type label |",
+    "| sample | biological sample/replicate ID |",
+    "| dataset, condition | study and experimental condition |",
+    "| n_cells, n_expressing | cells in group, cells with raw counts > 0 |",
+    "| pct_expressing | percent expressing (0-100) |",
+    "| mean_expression | mean normalized value layer |",
+    "| mean_counts | mean raw counts |"
+  )
+}
 writeLines(columns_md, file.path(opt$output_dir, "COLUMNS.md"))
 
 invisible(file.create(file.path(opt$output_dir, "export_complete.flag")))
 
 message("[merge] ", length(analysis_items), " analysis + ",
-        length(expression_items), " expression dataset(s) -> ", opt$output_dir)
+        length(expression_items), " expression + ",
+        length(distribution_items), " distribution dataset(s) -> ", opt$output_dir)

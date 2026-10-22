@@ -698,6 +698,7 @@ output/
     ├── export/
     │   ├── analysis/                # viewer analysis staging
     │   ├── expression/              # expression parquet + CSV source
+    │   ├── distribution/            # per-sample expression_distribution staging
     │   ├── excel/                   # dataset_type별 workbook
     │   │   ├── differential_expression.xlsx
     │   │   ├── go_analysis.xlsx
@@ -1061,7 +1062,8 @@ output/tutorial_compare/export/seqviewer/
 │   ├── <prefix>_wide_mean.parquet          # expression: true일 때
 │   ├── <prefix>_wide_pct.parquet
 │   ├── <prefix>_gene_index.parquet
-│   └── <prefix>_cell_type_summary.parquet
+│   ├── <prefix>_cell_type_summary.parquet
+│   └── <distribution_prefix>_pseudobulk.parquet  # expression_distribution
 ├── export_index.tsv             # 파일별 유형·세포타입·조건 목록
 ├── COLUMNS.md                   # 컬럼 규약
 └── export_complete.flag         # export 완료 표시
@@ -1074,14 +1076,16 @@ output/tutorial_compare/export/seqviewer/
 | `multi_group` | pseudobulk raw count, 샘플 열 포함 | 10개 |
 | `composition` | propeller 세포 조성 검정 | 1개 |
 | `expression_summary` | 전체 gene × cell_type 평균 발현 (wide 또는 long) | `expression: true`일 때 |
+| `expression_distribution` | gene × cell_type × sample pseudobulk 분포 | 1개 (pilot) |
 
 `expression_primary: long`이면 `<prefix>_wide_mean.parquet` 대신
 `<prefix>_long.parquet`이 생성되고, 부속 파일도 long layout에 맞게
 `gene_index`/`cell_type_summary`만 포함됩니다.
 
 예제 비교 분석(`10`개 세포타입, `Fasted` vs `Normal chow`, `expression: false`)에서는
-총 **69개** 데이터셋이 생성되었습니다. 데이터셋 수는 세포타입 수, contrast 수,
-enrichment 결과 유무, `expression` 설정에 따라 달라집니다.
+총 **70개** 데이터셋(analysis 69 + distribution pilot 1)이 생성되었습니다.
+데이터셋 수는 세포타입 수, contrast 수, enrichment 결과 유무, `expression` 및
+`expression_distribution` 설정에 따라 달라집니다.
 
 #### C-3. 뷰어에 Import
 
@@ -1091,14 +1095,17 @@ enrichment 결과 유무, `expression` 설정에 따라 달라집니다.
    (`output/tutorial_compare/export/seqviewer/`)를 지정합니다.
 4. Import 결과에서 데이터셋 수와 유형을 확인합니다.
 
-> **viewer 호환성 (2026-10-21 확인)**
+> **viewer 호환성 (2026-10-22 기준)**
 > cmg-seqviewer `feat/cli` `46a491a`(v1.4.0 예정)에서는 `composition`과
-> `expression_summary`를 지원합니다. 위 69개가 **69/69 모두 정상 Import**되고,
-> C185/C66/long 발현 번들도 각 1개씩 정상 Import됩니다.
+> `expression_summary`를 지원합니다. 위 70개 중 **69개**(DE/GO/MG/COMP/
+> expression_summary)가 정상 Import되고, C185/C66/long 발현 번들도 각 1개씩
+> 정상 Import됩니다. `expression_distribution` pilot 1개는 viewer 구현 후 지원
+> 예정입니다.
 >
-> v1.3.2 이하 viewer에서는 `composition` 1개와 `expression_summary`가 skip되어
-> 69개 중 68개만 반입됩니다. export 자체는 정상이며 parquet 파일은 모두 보존됩니다.
-> 새 번들을 보려면 viewer를 v1.4.0 이상으로 업그레이드하세요.
+> v1.3.2 이하 viewer에서는 `composition`/`expression_summary`/
+> `expression_distribution`이 skip되어 70개 중 68개만 반입됩니다. export 자체는
+> 정상이며 parquet 파일은 모두 보존됩니다. 새 번들을 보려면 viewer를 v1.4.0
+> 이상으로 업그레이드하세요.
 
 #### C-4. 전체 유전자 탐색 번들
 
@@ -1134,6 +1141,28 @@ Dowsett subset(2.59M rows) 같은 per-dataset 용도로만 사용합니다.
 
 자세한 파일 규격과 컬럼 정의는 `README.md`의 "cmg-seqviewer 연동" 섹션과
 `COLUMNS.md`를 참고하세요.
+
+#### C-5. 발현 분포(violin/box) pilot
+
+`expression_distribution`은 선택 gene panel에 대해 **gene × cell_type × sample**
+pseudobulk 분포를 추가합니다. 예제 비교 config는 Dowsett10xnuc pilot이 켜져 있어
+최종 번들에 `expression_distribution` 1개가 더 들어갑니다.
+
+```yaml
+expression_distribution:
+  enabled: true
+  genes: ["Gfap", "Agrp", "Pomc", "Sst"]  # null = all genes
+  sample_column: "sample_id"
+  dataset_column: "Dataset"
+  condition_column: "condition"
+  min_cells: 10
+  output_prefix: "hypomap_Dowsett10xnuc"
+  alias: "HypoMap Dowsett10xnuc pseudobulk distribution"
+```
+
+pilot 결과와 스키마 회신은 `docs/expression-distribution-response.md`에 정리되어
+있습니다. `sample`은 biological replicate이며, viewer의 `expression_distribution`
+타입 구현 후 violin/box UI에서 검증할 수 있습니다.
 
 ### D. GEO accession과 nf_fetchgeo의 경계
 

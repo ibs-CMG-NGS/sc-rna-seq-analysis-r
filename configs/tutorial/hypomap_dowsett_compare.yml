@@ -50,6 +50,14 @@ viewer_export:
   expression: false
   schema_version: "1.0"
 
+expression_distribution:
+  enabled: true
+  output_prefix: "hypomap_Dowsett10xnuc"
+  alias: "HypoMap Dowsett10xnuc pseudobulk distribution"
+  source: "HypoMap / Dowsett10xnuc"
+  license: "CC BY 4.0"
+  notes: "Pilot: per-sample pseudobulk, 30 marker genes, all cell types"
+
 de_analysis:
   method: "DESeq2"
   reference_level: "Normal chow"

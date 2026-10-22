@@ -138,6 +138,61 @@ expression_export:
   plots_dpi: 150
   plots_pdf: true
 
+# ── Expression distribution (per-sample pseudobulk, optional) ─
+# Adds an `expression_distribution` dataset to the viewer bundle.
+# One row = gene x cell_type x sample (biological replicate).
+expression_distribution:
+  enabled: false
+  genes:                     # null = all genes; pilot uses a marker panel
+    - Gfap
+    - Aqp4
+    - Slc1a2
+    - Agrp
+    - Pomc
+    - Pnoc
+    - Sst
+    - Ghrh
+    - Crh
+    - Trh
+    - Nts
+    - Oxt
+    - Avp
+    - Hcrt
+    - Mc4r
+    - Lepr
+    - Glp1r
+    - Gpr149
+    - Foxb1
+    - Lef1
+    - Irx5
+    - Fezf1
+    - Etnppl
+    - Ermn
+    - Plp1
+    - Mbp
+    - Mog
+    - Cx3cr1
+    - Csf1r
+    - Ptprc
+  cell_type_column: "cell_type"
+  cell_types: null
+  sample_column: "sample_id"
+  dataset_column: "Dataset"
+  condition_column: "condition"
+  min_cells: 10
+  assay: "RNA"
+  value_layer: "data"
+  counts_layer: "counts"
+  exclude_column: "Author_Exclude"
+  exclude_values: ["yes"]
+  gene_id_type: "symbol"
+  output_prefix: "distribution"
+  alias: "Expression distribution"
+  source: "HypoMap"
+  license: "CC BY 4.0"
+  citation: ""
+  notes: ""
+
 # ── Phase 0a: Label transfer (optional, reference-map) ─────
 label_transfer:
   method: "mapscvi"         # mapscvi only (HypoMap frozen scVI model)

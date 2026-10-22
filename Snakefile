@@ -64,6 +64,8 @@ else:
     RUN_EXPR_EXPORT = EXPR_CFG.get("enabled", False)
 
 RUN_EXPR_PLOTS = RUN_EXPR_EXPORT and EXPR_CFG.get("plots", True)
+DIST_CFG = config.get("expression_distribution", {})
+RUN_DISTRIBUTION = bool(RUN_VIEWER and DIST_CFG.get("enabled", False))
 
 # Canonical CSV/Excel table layer. CSV tables are produced whenever the
 # analysis/expression exporters run; these switches control merge + Excel.
@@ -545,6 +547,71 @@ if RUN_EXPR_EXPORT:
             """
 
 
+# ── Phase 5c-2: Expression distribution (optional) ────────────────────────────
+if RUN_DISTRIBUTION:
+    rule export_distribution:
+        input:
+            data = QUERY_INPUT,
+        output:
+            manifest = f"{OUTPUT}/export/distribution/seqviewer_manifest.json",
+            flag     = f"{OUTPUT}/export/distribution/distribution_complete.flag",
+        log:
+            "logs/export_distribution.log",
+        params:
+            output_dir       = f"{OUTPUT}/export/distribution",
+            prefix           = DIST_CFG.get("output_prefix", "distribution"),
+            alias            = DIST_CFG.get("alias", "Expression distribution"),
+            genes            = ",".join(DIST_CFG.get("genes") or []),
+            cell_type_column = DIST_CFG.get("cell_type_column",
+                                            config["single_cell"]["cell_type_column"]),
+            cell_types       = ",".join(DIST_CFG.get("cell_types") or []),
+            sample_column    = DIST_CFG.get("sample_column",
+                                            config["single_cell"]["sample_column"]),
+            dataset_column   = DIST_CFG.get("dataset_column", "Dataset"),
+            condition_column = DIST_CFG.get("condition_column",
+                                            config["single_cell"]["condition_column"]),
+            min_cells        = DIST_CFG.get("min_cells", 10),
+            assay            = DIST_CFG.get("assay", "RNA"),
+            value_layer      = DIST_CFG.get("value_layer", "data"),
+            counts_layer     = DIST_CFG.get("counts_layer", "counts"),
+            exclude_col      = DIST_CFG.get("exclude_column", ""),
+            exclude_vals     = ",".join(DIST_CFG.get("exclude_values") or []),
+            gene_id_type     = DIST_CFG.get("gene_id_type", "symbol"),
+            species          = DIST_CFG.get("species") or config["species"],
+            source           = DIST_CFG.get("source", "HypoMap"),
+            license          = DIST_CFG.get("license", "CC BY 4.0"),
+            citation         = DIST_CFG.get("citation", ""),
+            notes            = DIST_CFG.get("notes", ""),
+        shell:
+            """
+            Rscript scripts/13_export_distribution.R \
+                --input            {input.data} \
+                --output_dir       "{params.output_dir}" \
+                --prefix           "{params.prefix}" \
+                --alias            "{params.alias}" \
+                --genes            "{params.genes}" \
+                --cell_type_column "{params.cell_type_column}" \
+                --cell_types       "{params.cell_types}" \
+                --sample_column    "{params.sample_column}" \
+                --dataset_column   "{params.dataset_column}" \
+                --condition_column "{params.condition_column}" \
+                --min_cells        {params.min_cells} \
+                --assay            "{params.assay}" \
+                --value_layer      "{params.value_layer}" \
+                --counts_layer     "{params.counts_layer}" \
+                --exclude_col      "{params.exclude_col}" \
+                --exclude_vals     "{params.exclude_vals}" \
+                --gene_id_type     "{params.gene_id_type}" \
+                --species          "{params.species}" \
+                --source           "{params.source}" \
+                --license          "{params.license}" \
+                --citation         "{params.citation}" \
+                --notes            "{params.notes}" \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+
+
 # ── Phase 5d: Static summary figures (optional) ──────────────────────────────
 if RUN_EXPR_PLOTS:
     EXPR = config.get("expression_export", {})
@@ -616,6 +683,8 @@ if RUN_VIEWER:
             d["analysis_flag"] = rules.export_analysis.output.flag
         if RUN_VIEWER_EXPRESSION:
             d["expr_flag"] = rules.export_expression.output.flag
+        if RUN_DISTRIBUTION:
+            d["distribution_flag"] = rules.export_distribution.output.flag
         return d
 
     rule viewer_export:
@@ -632,6 +701,7 @@ if RUN_VIEWER:
             work_dir              = f"{OUTPUT}/export/seqviewer_work",
             analysis_dir          = f"{OUTPUT}/export/analysis" if RUN_VIEWER_ANALYSIS else "",
             expression_dir        = f"{OUTPUT}/export/seqviewer_work/expression",
+            distribution_dir      = f"{OUTPUT}/export/distribution" if RUN_DISTRIBUTION else "",
             output_dir            = f"{OUTPUT}/export/seqviewer",
             expression_export_dir = f"{OUTPUT}/export/expression",
             schema_version        = VIEWER_SCHEMA,
@@ -681,10 +751,11 @@ if RUN_VIEWER:
             fi
 
             Rscript scripts/10_merge_viewer_bundle.R \
-              --analysis_dir   "{params.analysis_dir}" \
-              --expression_dir "{params.expression_dir}" \
-              --output_dir     "{params.output_dir}" \
-              --schema_version "{params.schema_version}" \
+              --analysis_dir     "{params.analysis_dir}" \
+              --expression_dir   "{params.expression_dir}" \
+              --distribution_dir "{params.distribution_dir}" \
+              --output_dir       "{params.output_dir}" \
+              --schema_version   "{params.schema_version}" \
               2>&1 | tee {log}
 
             rm -rf "{params.expression_dir}"

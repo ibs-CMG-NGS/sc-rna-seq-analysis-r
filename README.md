@@ -16,7 +16,7 @@ Seurat (`.rds`) 또는 AnnData (`.h5ad`) 형식을 입력으로 받습니다. �
 | 4 | **Trajectory** *(선택)* | Monocle3 또는 Slingshot, 생물학적 판단에 기반한 root cell 지정 |
 | 5 | **Cell-Cell Communication** *(선택)* | CellChat 또는 LIANA, 조건 간 비교 지원 |
 | 6 | **보고서** | R Markdown HTML 보고서, Methods 초안 (`methods_draft.md`) 자동 생성 |
-| 7 | **cmg-seqviewer 연동** | DE / GO·KEGG / Composition / Multi-Group 결과를 뷰어 Import Folder 형식(parquet + `seqviewer_manifest.json`)으로 export |
+| 7 | **cmg-seqviewer 연동** | DE / GO·KEGG / Composition / Multi-Group / expression summary / distribution 결과를 뷰어 Import Folder 형식(parquet + `seqviewer_manifest.json`)으로 export |
 | 8 | **Canonical tables** | 분석·발현 결과를 `tables/*.csv` + `export/excel/*.xlsx`로도 export |
 
 ## 분석 모드: 탐색 vs 비교(통계)
@@ -131,11 +131,33 @@ export/seqviewer/
 
 뷰어에서는 `output/<실험명>/export/seqviewer/` 폴더 자체를 **Import Folder**로 선택합니다. `metadata.json`이 아니라 `seqviewer_manifest.json`을 읽습니다.
 
-> **viewer 호환성 (2026-10-21 확인)**: cmg-seqviewer `feat/cli` `46a491a`(v1.4.0 예정)에서 `composition`과 `expression_summary`를 지원합니다. `tutorial_compare`는 69/69, C185/C66/long 발현 번들은 각 1개씩 정상 Import되는 것을 viewer팀이 실측했습니다. v1.3.2 이하에서는 두 타입이 skip되므로 새 번들을 보려면 viewer 업그레이드가 필요합니다.
+> **viewer 호환성 (2026-10-22 기준)**: cmg-seqviewer `feat/cli` `46a491a`(v1.4.0 예정)에서 `composition`과 `expression_summary`를 지원합니다. `tutorial_compare`는 현재 70 datasets이며, v1.4.0 기준 69개(DE/GO/MG/COMP/expression_summary)가 Import됩니다. `expression_distribution` pilot 1개는 viewer 구현 후 지원 예정입니다. C185/C66/long 발현 번들은 각 1개씩 정상 Import되는 것을 viewer팀이 실측했습니다. v1.3.2 이하에서는 `composition`/`expression_summary`/`expression_distribution`이 skip됩니다.
 >
 > C66 legacy `multi_group` fallback은 v1.4.0 배포 후 제거 예정입니다. fallback과 `expression_summary`를 같은 DB에 동시에 Import하면 중복 dataset으로 보이므로 하나만 사용하세요.
 >
 > 기존 `export_seqviewer` / `expression_export.enabled` 설정은 하위 호환을 위해 계속 동작합니다. 새 config는 `viewer_export` 사용을 권장합니다.
+
+### Expression distribution (per-sample pseudobulk)
+
+`expression_distribution`을 켜면 선택 gene panel에 대해 **gene × cell_type × sample**
+pseudobulk 분포를 viewer 번들에 추가합니다. violin/box의 분포 단위는 biological
+sample(replicate)입니다.
+
+```yaml
+expression_distribution:
+  enabled: true
+  genes: ["Gfap", "Agrp", "Pomc", "Sst"]  # null = all genes
+  sample_column: "sample_id"
+  dataset_column: "Dataset"
+  condition_column: "condition"
+  min_cells: 10
+  output_prefix: "hypomap_Dowsett10xnuc"
+  alias: "HypoMap Dowsett10xnuc pseudobulk distribution"
+```
+
+출력은 `output/<실험명>/export/distribution/` staging 후 최종
+`export/seqviewer/`에 `dataset_type: expression_distribution` entry로 병합됩니다.
+HypoMap Dowsett10xnuc pilot은 `docs/expression-distribution-response.md` 참고.
 
 ## Canonical CSV / Excel tables
 
@@ -405,6 +427,7 @@ output/
     ├── export/
     │   ├── analysis/                # viewer analysis staging
     │   ├── expression/              # expression parquet + CSV source
+    │   ├── distribution/            # per-sample expression_distribution staging
     │   ├── excel/                   # dataset_type별 workbook
     │   │   ├── differential_expression.xlsx
     │   │   ├── go_analysis.xlsx
