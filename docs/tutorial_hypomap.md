@@ -469,7 +469,9 @@ exploration:
 ### 5.3 실행
 
 ```bash
-bash run_pipeline.sh configs/tutorial/hypomap_explore.yml --cores 4
+snakemake --profile profiles/default \
+  --configfile configs/tutorial/hypomap_explore.yml \
+  --cores 4
 ```
 
 예상 소요: **1–2분**, 최대 메모리 약 **21GB**.
@@ -641,7 +643,9 @@ de_analysis:
 ### 6.4 실행
 
 ```bash
-bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
+snakemake --profile profiles/default \
+  --configfile configs/tutorial/hypomap_dowsett_compare.yml \
+  --cores 4
 ```
 
 예상 소요: **약 10분** (구성 요소별 실측)
@@ -685,7 +689,23 @@ output/
     │   ├── <cell_type>_KEGG_up.csv
     │   ├── <cell_type>_KEGG_down.csv
     │   └── plots/
+    ├── tables/                      # canonical CSV table layer
+    │   ├── manifest.json
+    │   ├── index.tsv
+    │   ├── README.md
+    │   ├── analysis/datasets/*.csv
+    │   └── expression/datasets/*.csv
     ├── export/
+    │   ├── analysis/                # viewer analysis staging
+    │   ├── expression/              # expression parquet + CSV source
+    │   ├── excel/                   # dataset_type별 workbook
+    │   │   ├── differential_expression.xlsx
+    │   │   ├── go_analysis.xlsx
+    │   │   ├── composition.xlsx
+    │   │   ├── multi_group.xlsx
+    │   │   ├── expression_summary.xlsx
+    │   │   ├── excel_manifest.json
+    │   │   └── README.md
     │   └── seqviewer/               # cmg-seqviewer Import Folder
     │       ├── seqviewer_manifest.json
     │       ├── datasets/*.parquet
@@ -696,6 +716,11 @@ output/
         ├── report.html
         └── methods_draft.md
 ```
+
+`tables/`는 viewer와 무관하게 재사용할 수 있는 CSV 원본입니다. 기본 설정
+(`table_export.enabled: true`, `excel: true`)이면 `export/excel/`에
+`dataset_type`별 Excel workbook도 생성됩니다. Excel 한계(1,048,575 data rows /
+16,383 columns)를 넘는 표는 CSV-only로 남고 `excel_manifest.json`에 기록됩니다.
 
 ### 6.6 Pseudobulk DE 결과 읽기
 
@@ -827,10 +852,13 @@ Enrichment는 **DE 유전자 목록에 의존**합니다. DE cutoff를 바꾸면
 cutoff만 바꿔 DE/enrichment를 다시 돌릴 때 사용합니다.
 
 ```bash
-bash run_downstream_only.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
+snakemake --profile profiles/default \
+  --configfile configs/tutorial/hypomap_dowsett_compare.yml \
+  --config start_from=loaded \
+  --cores 4
 ```
 
-이 스크립트는 `output/tutorial_compare/loaded/seurat_validated.rds`가 이미 있을 때만 동작합니다.
+`start_from=loaded`는 `output/tutorial_compare/loaded/seurat_validated.rds`가 이미 있을 때만 동작합니다.
 
 ### 7.2 Cutoff 변경
 
@@ -842,7 +870,7 @@ log2fc_cutoff: 1.0
 ```
 
 더 엄격하게 하려면 `padj_cutoff: 0.01`, `log2fc_cutoff: 1.5`처럼 바꿉니다.
-변경 후 `run_downstream_only.sh`로 재실행합니다.
+변경 후 `--config start_from=loaded`로 재실행합니다.
 
 ### 7.3 전체 43개 세포타입으로 실행
 
@@ -857,7 +885,9 @@ single_cell:
 그다음 실행합니다.
 
 ```bash
-bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
+snakemake --profile profiles/default \
+  --configfile configs/tutorial/hypomap_dowsett_compare.yml \
+  --cores 4
 ```
 
 - DE 결과와 volcano plot이 43개로 늘어납니다.
@@ -879,14 +909,18 @@ de_analysis:
 Snakemake는 완료된 파일을 재사용합니다. 강제로 다시 돌리려면:
 
 ```bash
-bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4 -F
+snakemake --profile profiles/default \
+  --configfile configs/tutorial/hypomap_dowsett_compare.yml \
+  --cores 4 -F
 ```
 
 또는 출력 디렉토리를 지우고 실행합니다.
 
 ```bash
 rm -rf output/tutorial_compare
-bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
+snakemake --profile profiles/default \
+  --configfile configs/tutorial/hypomap_dowsett_compare.yml \
+  --cores 4
 ```
 
 ---
@@ -958,6 +992,10 @@ wsl --shutdown
 | `pseudobulk_de/pseudobulk_counts.rds` | pseudobulk count 행렬 |
 | `composition/propeller_results.csv` | 세포 조성 검정 결과 |
 | `enrichment/*.csv` | GO/KEGG enrichment 결과 |
+| `tables/manifest.json` | canonical CSV 전체 manifest |
+| `tables/index.tsv` | CSV 파일별 유형·세포타입·조건 목록 |
+| `export/excel/*.xlsx` | dataset_type별 Excel workbook |
+| `export/excel/excel_manifest.json` | Excel 생성·skip 목록 |
 | `report/report.html` | 통합 리포트 |
 | `report/methods_draft.md` | Methods 초안 |
 
@@ -968,6 +1006,10 @@ wsl --shutdown
 **Import Folder 번들**(`seqviewer_manifest.json` + `datasets/*.parquet`)로 export합니다.
 `report.html`이 분석의 최종 요약이라면, viewer 번들은 DE·GO·세포 조성 결과를
 유전자/세포타입 단위로 필터링하며 보기 위한 보조 산출물입니다.
+
+viewer와 별개로 `tables/` 아래 canonical CSV와 `export/excel/` 아래
+dataset_type별 Excel workbook도 생성됩니다(`table_export.enabled: true`,
+`table_export.excel: true`). viewer를 쓰지 않아도 이 파일들을 바로 열 수 있습니다.
 
 #### C-1. export 활성화
 
@@ -998,7 +1040,9 @@ viewer_export:
 그다음 파이프라인을 다시 실행합니다.
 
 ```bash
-bash run_pipeline.sh configs/tutorial/hypomap_dowsett_compare.yml --cores 4
+snakemake --profile profiles/default \
+  --configfile configs/tutorial/hypomap_dowsett_compare.yml \
+  --cores 4
 ```
 
 #### C-2. 무엇이 export되나
@@ -1047,13 +1091,14 @@ enrichment 결과 유무, `expression` 설정에 따라 달라집니다.
    (`output/tutorial_compare/export/seqviewer/`)를 지정합니다.
 4. Import 결과에서 데이터셋 수와 유형을 확인합니다.
 
-> **현재 호환성 (2026-10-21 검증 기준)**
-> public cmg-seqviewer HEAD(v1.3.2)는 `composition`과 `expression_summary`
-> dataset type을 아직 지원하지 않습니다. 따라서 위 69개 중 DE/GO/Multi-Group
-> **68개는 정상 반입**되고, `COMP__propeller.parquet` 1개만 `missing`으로 표시됩니다.
-> `expression: true`인 실행에서는 expression summary도 skip됩니다.
-> export 자체는 정상이며 parquet 파일은 모두 보존됩니다. 해당 타입을 지원하는
-> 뷰어 버전에서는 같은 폴더를 다시 Import하면 됩니다.
+> **viewer 호환성 (2026-10-21 확인)**
+> cmg-seqviewer `feat/cli` `46a491a`(v1.4.0 예정)에서는 `composition`과
+> `expression_summary`를 지원합니다. 위 69개가 **69/69 모두 정상 Import**되고,
+> C185/C66/long 발현 번들도 각 1개씩 정상 Import됩니다.
+>
+> v1.3.2 이하 viewer에서는 `composition` 1개와 `expression_summary`가 skip되어
+> 69개 중 68개만 반입됩니다. export 자체는 정상이며 parquet 파일은 모두 보존됩니다.
+> 새 번들을 보려면 viewer를 v1.4.0 이상으로 업그레이드하세요.
 
 #### C-4. 전체 유전자 탐색 번들
 
@@ -1078,8 +1123,10 @@ expression_export:
 ```
 
 전체 HypoMap(수십만 세포)에서 실행하면 시간과 RAM 사용량이 크므로, 먼저
-subset에서 확인한 뒤 전체로 확장하는 것을 권장합니다. 이미 만들어 둔 전체
-HypoMap C185 탐색 번들은 다음 폴더에 있습니다.
+subset에서 확인한 뒤 전체로 확장하는 것을 권장합니다. 전체 atlas는 **wide**를
+사용하세요. long은 viewer v1에서 **5,000,000 rows**까지 지원하므로,
+Dowsett subset(2.59M rows) 같은 per-dataset 용도로만 사용합니다.
+이미 만들어 둔 전체 HypoMap C185 탐색 번들은 다음 폴더에 있습니다.
 
 ```text
 /home/ygkim/ngs-pipeline/scran-seq-analysis/output/hypomap_expression/export/seqviewer

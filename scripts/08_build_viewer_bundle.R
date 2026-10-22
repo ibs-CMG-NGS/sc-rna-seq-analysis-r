@@ -34,7 +34,8 @@ option_list <- list(
   make_option("--summary_name", type = "character", default = "hypomap_cell_type_summary.parquet"),
   make_option("--include_long", type = "character", default = "FALSE"),
   make_option("--long_name",    type = "character", default = ""),
-  make_option("--fallback_multi_group", type = "character", default = "TRUE"),
+  make_option("--fallback_multi_group", type = "character", default = "FALSE",
+              help = "Deprecated: viewer >=1.4 supports expression_summary [default: %default]"),
   make_option("--tags",         type = "character", default = ""),
   make_option("--notes",        type = "character", default = "")
 )
@@ -203,7 +204,7 @@ if (fallback_mg) {
     row_count         = nrow(mg),
     gene_count        = nrow(mg),
     cell_type_count   = ncol(mg) - 1L,
-    notes             = paste0(notes, " | temporary multi_group fallback for Phase 0"),
+    notes             = paste0(notes, " | deprecated multi_group fallback (viewer >=1.4 supports expression_summary)"),
     tags              = as.list(c(tags, "multi_group-test")),
     expression_schema = make_schema("wide")
   )
@@ -228,9 +229,10 @@ readme <- c(
   "## Manifest",
   "",
   paste0("- `seqviewer_manifest.json`: final entry (`dataset_type: ", opt$dataset_type, "`)."),
-  "- `seqviewer_manifest.multi_group.json`: temporary Phase 0 test entry.",
-  "  Rename it to `seqviewer_manifest.json` to test `--type multi_group` before",
-  "  the `expression_summary` type lands.",
+  if (fallback_mg) c(
+    "- `seqviewer_manifest.multi_group.json`: deprecated Phase 0 fallback entry.",
+    "  viewer >=1.4 supports `expression_summary`; use the main manifest instead."
+  ),
   "",
   paste0("pct scale: ", opt$pct_scale, " | gene id: ", opt$gene_id_type,
          " | n_cells_used: ", manifest_in$n_cells_used),

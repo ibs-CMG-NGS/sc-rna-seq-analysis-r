@@ -17,6 +17,7 @@ Seurat (`.rds`) 또는 AnnData (`.h5ad`) 형식을 입력으로 받습니다. �
 | 5 | **Cell-Cell Communication** *(선택)* | CellChat 또는 LIANA, 조건 간 비교 지원 |
 | 6 | **보고서** | R Markdown HTML 보고서, Methods 초안 (`methods_draft.md`) 자동 생성 |
 | 7 | **cmg-seqviewer 연동** | DE / GO·KEGG / Composition / Multi-Group 결과를 뷰어 Import Folder 형식(parquet + `seqviewer_manifest.json`)으로 export |
+| 8 | **Canonical tables** | 분석·발현 결과를 `tables/*.csv` + `export/excel/*.xlsx`로도 export |
 
 ## 분석 모드: 탐색 vs 비교(통계)
 
@@ -28,7 +29,7 @@ Seurat (`.rds`) 또는 AnnData (`.h5ad`) 형식을 입력으로 받습니다. �
 | 필요 데이터 | annotated Seurat / AnnData | + `sample_id`(생물학적 샘플)와 `condition` |
 | 최소 반복 | 없음 | 조건당 생물학적 샘플 **≥2** (권장 ≥3) |
 | 핵심 config | `optional_modules.exploration: true`, `modules.*: false` | `modules.pseudobulk_de/composition/enrichment: true`, `optional_modules.exploration: false` |
-| 주요 출력 | `exploration/*.csv`, bar/dot/heatmap | `pseudobulk_de/*`, `composition/*`, `enrichment/*`, volcano plot |
+| 주요 출력 | `exploration/*.csv`, bar/dot/heatmap | `pseudobulk_de/*`, `composition/*`, `enrichment/*`, volcano plot, `tables/`, `export/excel/` |
 | 통계 | 없음 (서술적) | DESeq2/edgeR, propeller, GO/KEGG ORA |
 | 주의 | `split_by: Dataset`으로 dataset 교란 확인 | 세포를 반복으로 세면 pseudoreplication |
 
@@ -100,7 +101,7 @@ viewer_export:
   expression_prefix: "my_experiment"
   expression_alias: "My experiment mean expression"
   expression_cell_type_level: "C185"
-  expression_primary: "wide"        # wide | long
+  expression_primary: "wide"        # wide 권장; long은 per-dataset (viewer v1 5M rows 한도)
   expression_include_long: false    # wide일 때 long 테이블도 추가
   expression_pct_scale: "0-100"
 ```
@@ -130,9 +131,48 @@ export/seqviewer/
 
 뷰어에서는 `output/<실험명>/export/seqviewer/` 폴더 자체를 **Import Folder**로 선택합니다. `metadata.json`이 아니라 `seqviewer_manifest.json`을 읽습니다.
 
-> 현재 public cmg-seqviewer HEAD(v1.3.2)는 `composition`과 `expression_summary`를 지원하지 않습니다. 해당 타입을 지원하는 뷰어 버전에서는 같은 폴더를 그대로 Import할 수 있습니다.
+> **viewer 호환성 (2026-10-21 확인)**: cmg-seqviewer `feat/cli` `46a491a`(v1.4.0 예정)에서 `composition`과 `expression_summary`를 지원합니다. `tutorial_compare`는 69/69, C185/C66/long 발현 번들은 각 1개씩 정상 Import되는 것을 viewer팀이 실측했습니다. v1.3.2 이하에서는 두 타입이 skip되므로 새 번들을 보려면 viewer 업그레이드가 필요합니다.
+>
+> C66 legacy `multi_group` fallback은 v1.4.0 배포 후 제거 예정입니다. fallback과 `expression_summary`를 같은 DB에 동시에 Import하면 중복 dataset으로 보이므로 하나만 사용하세요.
 >
 > 기존 `export_seqviewer` / `expression_export.enabled` 설정은 하위 호환을 위해 계속 동작합니다. 새 config는 `viewer_export` 사용을 권장합니다.
+
+## Canonical CSV / Excel tables
+
+`viewer_export`와 별개로, 분석·발현 결과를 **CSV 원본 테이블**로도 남깁니다.
+viewer parquet은 서비스용 어댑터이고, `tables/` 아래 CSV가 재사용 가능한
+canonical 결과입니다.
+
+```yaml
+table_export:
+  enabled: true       # output/<실험명>/tables/ 생성+병합
+  excel: true         # output/<실험명>/export/excel/*.xlsx 생성
+```
+
+- `tables/manifest.json`에 모든 CSV의 경로·유형·세포타입·조건이 기록됩니다.
+- `tables/index.tsv`로 파일 목록을 빠르게 확인할 수 있습니다.
+- Excel은 `dataset_type`별 workbook으로 묶입니다:
+  `differential_expression.xlsx`, `go_analysis.xlsx`, `composition.xlsx`,
+  `multi_group.xlsx`, `expression_summary.xlsx`.
+- Excel 한계(1,048,575 data rows / 16,383 columns)를 넘는 표는 CSV-only로
+  남고 `export/excel/excel_manifest.json`의 `skipped`에 기록됩니다.
+
+```text
+tables/
+├── manifest.json
+├── index.tsv
+├── README.md
+├── analysis/datasets/*.csv
+└── expression/datasets/*.csv
+export/excel/
+├── differential_expression.xlsx
+├── go_analysis.xlsx
+├── composition.xlsx
+├── multi_group.xlsx
+├── expression_summary.xlsx
+├── excel_manifest.json
+└── README.md
+```
 
 ---
 
@@ -162,8 +202,9 @@ Rscript scripts/install_mapscvi.R
 **bulk RNA-seq 파이프라인과의 일관성 유지:**
 - `configs/template/config.yml` (Git 추적) + `configs/config_*.yml` (gitignore)
 - `padj_cutoff`, `log2fc_cutoff` 최상위 레벨 키
-- `run_pipeline.sh` / `run_downstream_only.sh` 실행 스크립트
-- `config_used.yml` 자동 저장, 출력물 CSV + PNG
+- `profiles/default` Snakemake profile 기반 direct `snakemake` 실행
+- `run_pipeline.sh` / `run_downstream_only.sh`는 deprecated 호환 shim
+- `config_used.yml` 자동 저장, 출력물 CSV + Excel + PNG
 
 ---
 
@@ -232,26 +273,33 @@ cp configs/template/config_compare.yml configs/config_<실험명>.yml
 **비교 통계 포함 전체 실행 (Phase 1–6):**
 
 ```bash
-bash run_pipeline.sh configs/config_<실험명>.yml --cores 8
+snakemake --profile profiles/default \
+  --configfile configs/config_<실험명>.yml \
+  --cores 8
 ```
 
 **탐색 전용 실행** (생물학적 반복 불필요, 탐색 템플릿을 복사한 경우):
 
 ```bash
-bash run_pipeline.sh configs/config_<실험명>.yml --cores 4
+snakemake --profile profiles/default \
+  --configfile configs/config_<실험명>.yml \
+  --cores 4
 ```
 
 **Downstream만 재실행** (비교 분석에서 입력 로딩 생략, cutoff 변경 등):
 
 ```bash
-bash run_downstream_only.sh configs/config_<실험명>.yml --cores 8
+snakemake --profile profiles/default \
+  --configfile configs/config_<실험명>.yml \
+  --config start_from=loaded \
+  --cores 8
 ```
 
-**Snakemake 직접 실행:**
+`profiles/default/config.yaml`에 `cores: 4`, `rerun-incomplete: true`,
+`printshellcmds: true`가 정의되어 있습니다. `--cores`를 생략하면 4개 코어를 사용합니다.
 
-```bash
-snakemake --configfile configs/config_<실험명>.yml --cores 8 --rerun-incomplete
-```
+> 기존 `run_pipeline.sh` / `run_downstream_only.sh`는 deprecated shim으로 남아 있지만,
+> 새 실행에는 위 Snakemake 명령을 사용하세요.
 
 ---
 
@@ -262,6 +310,7 @@ snakemake --configfile configs/config_<실험명>.yml --cores 8 --rerun-incomple
 ```yaml
 species: "human"          # "human" | "mouse"
 output_dir: "output/my_experiment"   # 항상 output/<실험명>
+start_from: "input"       # "input" | "loaded" (downstream-only)
 
 padj_cutoff:   0.05       # DE 유의성 기준 (bulk 파이프라인과 동일 키)
 log2fc_cutoff: 1.0
@@ -347,7 +396,23 @@ output/
     │   ├── lr_interactions_<condition>.csv
     │   ├── cellchat_<condition>.rds
     │   └── plots/
+    ├── tables/                      # canonical CSV table layer
+    │   ├── manifest.json
+    │   ├── index.tsv
+    │   ├── README.md
+    │   ├── analysis/datasets/*.csv
+    │   └── expression/datasets/*.csv
     ├── export/
+    │   ├── analysis/                # viewer analysis staging
+    │   ├── expression/              # expression parquet + CSV source
+    │   ├── excel/                   # dataset_type별 workbook
+    │   │   ├── differential_expression.xlsx
+    │   │   ├── go_analysis.xlsx
+    │   │   ├── composition.xlsx
+    │   │   ├── multi_group.xlsx
+    │   │   ├── expression_summary.xlsx
+    │   │   ├── excel_manifest.json
+    │   │   └── README.md
     │   └── seqviewer/               # cmg-seqviewer Import Folder
     │       ├── seqviewer_manifest.json
     │       ├── datasets/*.parquet
@@ -377,7 +442,7 @@ Rscript -e "
 
 cp configs/template/config_compare.yml configs/config_test.yml
 # config_test.yml에서 input_path: "test_pbmc3k.rds" 로 수정 후:
-bash run_pipeline.sh configs/config_test.yml --cores 4
+snakemake --profile profiles/default --configfile configs/config_test.yml --cores 4
 ```
 
 ---

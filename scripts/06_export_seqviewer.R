@@ -16,7 +16,9 @@ opt_list <- list(
   make_option("--enrichment_dir",  type = "character", default = "", help = "Enrichment CSV directory (optional)"),
   make_option("--composition_dir", type = "character", default = "", help = "Composition directory with propeller_results.csv (optional)"),
   make_option("--output_dir",      type = "character", default = "output/export/seqviewer", help = "Export root [default: %default]"),
+  make_option("--csv_dir",         type = "character", default = "", help = "Optional canonical CSV table root (writes manifest.json + datasets/*.csv)"),
   make_option("--schema_version",  type = "character", default = "1.0", help = "Export schema version [default: %default]"),
+  make_option("--table_schema_version", type = "character", default = "1.0", help = "Canonical CSV table schema version [default: %default]"),
   make_option("--species",         type = "character", default = "human", help = "human | mouse [default: %default]"),
   make_option("--padj_cutoff",     type = "double",    default = 0.05, help = "[default: %default]"),
   make_option("--log2fc_cutoff",   type = "double",    default = 1.0,  help = "[default: %default]")
@@ -31,6 +33,10 @@ for (pkg in c("arrow", "jsonlite")) {
          "Install with: conda install -c conda-forge r-", pkg, call. = FALSE)
   }
 }
+if (nzchar(opt$csv_dir) && !requireNamespace("data.table", quietly = TRUE)) {
+  stop("[export_seqviewer] R package 'data.table' is required for --csv_dir. ",
+       "Install with: conda install -c conda-forge r-data.table", call. = FALSE)
+}
 
 organism <- if (opt$species == "mouse") "Mus musculus" else "Homo sapiens"
 safe     <- function(x) gsub("[^A-Za-z0-9_]", "_", x)
@@ -39,8 +45,16 @@ datasets_dir <- file.path(opt$output_dir, "datasets")
 dir.create(datasets_dir, recursive = TRUE, showWarnings = FALSE)
 unlink(list.files(datasets_dir, pattern = "\\.parquet$", full.names = TRUE))
 
-entries    <- list()
-index_rows <- list()
+csv_datasets_dir <- ""
+if (nzchar(opt$csv_dir)) {
+  csv_datasets_dir <- file.path(opt$csv_dir, "datasets")
+  dir.create(csv_datasets_dir, recursive = TRUE, showWarnings = FALSE)
+  unlink(list.files(csv_datasets_dir, pattern = "\\.csv$", full.names = TRUE))
+}
+
+entries       <- list()
+table_entries <- list()
+index_rows    <- list()
 
 uuid5 <- function(name, ns = "6ba7b810-9dad-11d1-80b4-00c04fd430c8") {
   ns_bytes <- as.raw(strtoi(substring(gsub("-", "", ns), seq(1, 31, 2), seq(2, 32, 2)), 16L))
@@ -85,6 +99,33 @@ register <- function(df, stem, dataset_type, alias, condition, cell_type = NA_ch
   )
   is_absent <- vapply(entry, function(x) length(x) == 1 && !is.list(x) && is.na(x), logical(1))
   entries[[length(entries) + 1]] <<- entry[!is_absent]
+
+  if (nzchar(csv_datasets_dir)) {
+    csv_name <- paste0(stem, ".csv")
+    data.table::fwrite(df, file.path(csv_datasets_dir, csv_name), na = "")
+    table_entry <- list(
+      dataset_id           = uuid5(paste0("table:", csv_name)),
+      table_name           = stem,
+      alias                = alias,
+      file_path            = paste0("datasets/", csv_name),
+      dataset_type         = dataset_type,
+      layout               = if (dataset_type %in% c("composition", "multi_group")) "wide" else "long",
+      experiment_condition = condition,
+      cell_type            = cell_type,
+      direction            = direction,
+      ontology             = ontology,
+      row_count            = as.integer(nrow(df)),
+      column_count         = as.integer(ncol(df)),
+      gene_count           = as.integer(gene_count),
+      significant_genes    = as.integer(significant),
+      notes                = notes,
+      tags                 = as.list(unique(c("scRNA", tags)))
+    )
+    is_absent_table <- vapply(table_entry,
+                              function(x) length(x) == 1 && !is.list(x) && is.na(x),
+                              logical(1))
+    table_entries[[length(table_entries) + 1]] <<- table_entry[!is_absent_table]
+  }
 
   index_rows[[length(index_rows) + 1]] <<- data.frame(
     file = fname, dataset_type = dataset_type, cell_type = cell_type,
@@ -326,5 +367,20 @@ columns_md <- c(
   "`export_index.tsv` lists the files for pipeline-side checks."
 )
 writeLines(columns_md, file.path(opt$output_dir, "COLUMNS.md"))
+
+if (nzchar(opt$csv_dir)) {
+  jsonlite::write_json(
+    list(
+      table_schema_version = opt$table_schema_version,
+      source               = "06_export_seqviewer.R",
+      format               = "csv",
+      datasets             = table_entries
+    ),
+    file.path(opt$csv_dir, "manifest.json"),
+    pretty = TRUE, auto_unbox = TRUE, null = "null"
+  )
+  message("[export_seqviewer] canonical CSV tables: ", length(table_entries),
+          " -> ", opt$csv_dir)
+}
 
 message("[export_seqviewer] Done: ", length(entries), " dataset(s) -> ", opt$output_dir)

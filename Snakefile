@@ -1,6 +1,6 @@
 """
 scRNA-seq 3rd Analysis Pipeline
-Usage: snakemake --configfile configs/config_<experiment>.yml --cores <N>
+Usage: snakemake --profile profiles/default --configfile configs/config_<experiment>.yml --cores <N>
 """
 
 import os
@@ -21,6 +21,11 @@ def join_cfg(value, default="null"):
 
 # ── Derived variables ──────────────────────────────────────────────────────────
 OUTPUT     = config["output_dir"]
+START_FROM = config.get("start_from", "input")
+if START_FROM not in {"input", "loaded"}:
+    raise ValueError("start_from must be 'input' or 'loaded'")
+LOADED_RDS = f"{OUTPUT}/loaded/seurat_validated.rds"
+LOAD_FLAG  = f"{OUTPUT}/loaded/load_complete.flag"
 OPTIONAL   = config.get("optional_modules", {})
 RUN_TRAJ   = OPTIONAL.get("trajectory", False)
 RUN_COMM   = OPTIONAL.get("cell_communication", True)
@@ -59,6 +64,17 @@ else:
     RUN_EXPR_EXPORT = EXPR_CFG.get("enabled", False)
 
 RUN_EXPR_PLOTS = RUN_EXPR_EXPORT and EXPR_CFG.get("plots", True)
+
+# Canonical CSV/Excel table layer. CSV tables are produced whenever the
+# analysis/expression exporters run; these switches control merge + Excel.
+TABLE_CFG        = config.get("table_export", {})
+RUN_TABLE_EXPORT = bool(TABLE_CFG.get("enabled", True))
+RUN_TABLE_ANALYSIS   = RUN_TABLE_EXPORT and RUN_DE
+RUN_TABLE_EXPRESSION = RUN_TABLE_EXPORT and RUN_EXPR_EXPORT
+RUN_TABLE_MERGE      = RUN_TABLE_EXPORT and (RUN_TABLE_ANALYSIS or RUN_TABLE_EXPRESSION)
+RUN_TABLE_EXCEL      = RUN_TABLE_MERGE and bool(TABLE_CFG.get("excel", True))
+RUN_ANALYSIS_EXPORT  = RUN_DE and (RUN_VIEWER_ANALYSIS or RUN_EXPORT or RUN_TABLE_EXPORT)
+
 if RUN_ENR and not RUN_DE:
     raise ValueError("modules.enrichment requires modules.pseudobulk_de; "
                      "set modules.enrichment: false")
@@ -79,6 +95,11 @@ def save_config_snapshot(config, output_dir):
         yaml.dump(dict(config), f, default_flow_style=False)
 
 
+onstart:
+    if not workflow.dryrun:
+        save_config_snapshot(config, OUTPUT)
+
+
 # ── Target rule ───────────────────────────────────────────────────────────────
 rule all:
     input:
@@ -92,6 +113,8 @@ rule all:
         expand("{out}/trajectory/trajectory_complete.flag",   out=OUTPUT) if RUN_TRAJ else [],
         expand("{out}/cell_communication/comm_complete.flag", out=OUTPUT) if RUN_COMM else [],
         expand("{out}/export/seqviewer/export_complete.flag",  out=OUTPUT) if (RUN_VIEWER or RUN_EXPORT) else [],
+        expand("{out}/tables/tables_complete.flag",            out=OUTPUT) if RUN_TABLE_MERGE else [],
+        expand("{out}/export/excel/excel_complete.flag",       out=OUTPUT) if RUN_TABLE_EXCEL else [],
         expand("{out}/report/report.html",                    out=OUTPUT),
 
 
@@ -137,44 +160,46 @@ else:
 
 
 # ── Phase 1: Load & validate input ───────────────────────────────────────────
-rule load_input:
-    input:
-        data = QUERY_INPUT,
-    output:
-        rds  = f"{OUTPUT}/loaded/seurat_validated.rds",
-        flag = f"{OUTPUT}/loaded/load_complete.flag",
-    log:
-        f"logs/load_input.log",
-    params:
-        format         = config["single_cell"]["input_format"],
-        cell_type_col  = config["single_cell"]["cell_type_column"],
-        sample_col     = config["single_cell"]["sample_column"],
-        condition_col  = config["single_cell"]["condition_column"],
-        cell_types     = join_cfg(config["single_cell"].get("cell_types")),
-        min_cells      = config["single_cell"]["min_cells_per_group"],
-        counts_layer   = config["single_cell"].get("counts_layer", "counts"),
-    shell:
-        """
-        Rscript scripts/input_loader.R \
-            --input         {input.data} \
-            --format        {params.format} \
-            --cell_type_col {params.cell_type_col} \
-            --sample_col    {params.sample_col} \
-            --condition_col {params.condition_col} \
-            --cell_types    "{params.cell_types}" \
-            --min_cells     {params.min_cells} \
-            --counts_layer  {params.counts_layer} \
-            --output_rds    {output.rds} \
-            2>&1 | tee {log}
-        touch {output.flag}
-        """
+# start_from=loaded skips input_loader and uses the existing validated RDS.
+if START_FROM != "loaded":
+    rule load_input:
+        input:
+            data = QUERY_INPUT,
+        output:
+            rds  = LOADED_RDS,
+            flag = LOAD_FLAG,
+        log:
+            f"logs/load_input.log",
+        params:
+            format         = config["single_cell"]["input_format"],
+            cell_type_col  = config["single_cell"]["cell_type_column"],
+            sample_col     = config["single_cell"]["sample_column"],
+            condition_col  = config["single_cell"]["condition_column"],
+            cell_types     = join_cfg(config["single_cell"].get("cell_types")),
+            min_cells      = config["single_cell"]["min_cells_per_group"],
+            counts_layer   = config["single_cell"].get("counts_layer", "counts"),
+        shell:
+            """
+            Rscript scripts/input_loader.R \
+                --input         {input.data} \
+                --format        {params.format} \
+                --cell_type_col {params.cell_type_col} \
+                --sample_col    {params.sample_col} \
+                --condition_col {params.condition_col} \
+                --cell_types    "{params.cell_types}" \
+                --min_cells     {params.min_cells} \
+                --counts_layer  {params.counts_layer} \
+                --output_rds    {output.rds} \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
 
 
 # ── Phase 2a: Pseudobulk DE ───────────────────────────────────────────────────
 if RUN_DE:
     rule pseudobulk_de:
         input:
-            rds  = rules.load_input.output.rds,
+            rds       = LOADED_RDS,
         output:
             flag = f"{OUTPUT}/pseudobulk_de/de_complete.flag",
         log:
@@ -211,7 +236,7 @@ else:
 if RUN_COMP:
     rule composition:
         input:
-            rds  = rules.load_input.output.rds,
+            rds       = LOADED_RDS,
         output:
             flag = f"{OUTPUT}/composition/composition_complete.flag",
         log:
@@ -280,7 +305,7 @@ else:
 if RUN_TRAJ:
     rule trajectory:
         input:
-            rds  = rules.load_input.output.rds,
+            rds       = LOADED_RDS,
         output:
             flag = f"{OUTPUT}/trajectory/trajectory_complete.flag",
         log:
@@ -313,7 +338,7 @@ else:
 if RUN_COMM:
     rule cell_communication:
         input:
-            rds  = rules.load_input.output.rds,
+            rds       = LOADED_RDS,
         output:
             flag = f"{OUTPUT}/cell_communication/comm_complete.flag",
         log:
@@ -342,38 +367,72 @@ else:
             "mkdir -p $(dirname {output.flag}) && touch {output.flag}"
 
 
-# ── Phase 7: cmg-seqviewer handoff export (Track B, E1) ───────────────────────
-if RUN_EXPORT:
-    rule export_seqviewer:
+# ── Phase 7: Analysis tables + cmg-seqviewer staging ─────────────────────────
+# 06 writes both the viewer parquet staging bundle and canonical CSV tables.
+if RUN_ANALYSIS_EXPORT:
+    rule export_analysis:
         input:
             de_flag   = rules.pseudobulk_de.output.flag,
-            comp_flag = rules.composition.output.flag,
-            enr_flag  = rules.enrichment.output.flag,
+            comp_flag = rules.composition.output.flag if RUN_COMP else [],
+            enr_flag  = rules.enrichment.output.flag if RUN_ENR else [],
         output:
-            index = f"{OUTPUT}/export/seqviewer/export_index.tsv",
-            flag  = f"{OUTPUT}/export/seqviewer/export_complete.flag",
+            manifest      = f"{OUTPUT}/export/analysis/seqviewer_manifest.json",
+            index         = f"{OUTPUT}/export/analysis/export_index.tsv",
+            flag          = f"{OUTPUT}/export/analysis/analysis_complete.flag",
+            table_manifest = f"{OUTPUT}/tables/analysis/manifest.json" if RUN_TABLE_ANALYSIS else [],
         log:
-            "logs/export_seqviewer.log",
+            "logs/export_analysis.log",
         params:
             de_dir          = f"{OUTPUT}/pseudobulk_de",
-            enrichment_dir  = f"{OUTPUT}/enrichment",
-            composition_dir = f"{OUTPUT}/composition",
-            output_dir      = f"{OUTPUT}/export/seqviewer",
+            enrichment_dir  = f"{OUTPUT}/enrichment" if RUN_ENR else "",
+            composition_dir = f"{OUTPUT}/composition" if RUN_COMP else "",
+            output_dir      = f"{OUTPUT}/export/analysis",
+            csv_dir         = f"{OUTPUT}/tables/analysis" if RUN_TABLE_ANALYSIS else "",
             schema_version  = config.get("export_seqviewer", {}).get("schema_version", "1.0"),
+            table_schema_version = "1.0",
             species         = config["species"],
             padj            = config["padj_cutoff"],
             log2fc          = config["log2fc_cutoff"],
         shell:
             """
             Rscript scripts/06_export_seqviewer.R \
-                --de_dir          {params.de_dir} \
-                --enrichment_dir  {params.enrichment_dir} \
-                --composition_dir {params.composition_dir} \
-                --output_dir      {params.output_dir} \
-                --schema_version  {params.schema_version} \
-                --species         {params.species} \
+                --de_dir          "{params.de_dir}" \
+                --enrichment_dir  "{params.enrichment_dir}" \
+                --composition_dir "{params.composition_dir}" \
+                --output_dir      "{params.output_dir}" \
+                --csv_dir         "{params.csv_dir}" \
+                --schema_version  "{params.schema_version}" \
+                --table_schema_version "{params.table_schema_version}" \
+                --species         "{params.species}" \
                 --padj_cutoff     {params.padj} \
                 --log2fc_cutoff   {params.log2fc} \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+
+
+# ── Phase 7: cmg-seqviewer handoff export (Track B, E1) ───────────────────────
+if RUN_EXPORT and RUN_DE:
+    rule export_seqviewer:
+        input:
+            flag = rules.export_analysis.output.flag,
+        output:
+            manifest = f"{OUTPUT}/export/seqviewer/seqviewer_manifest.json",
+            index    = f"{OUTPUT}/export/seqviewer/export_index.tsv",
+            flag     = f"{OUTPUT}/export/seqviewer/export_complete.flag",
+        log:
+            "logs/export_seqviewer.log",
+        params:
+            analysis_dir   = f"{OUTPUT}/export/analysis",
+            output_dir     = f"{OUTPUT}/export/seqviewer",
+            schema_version = config.get("export_seqviewer", {}).get("schema_version", "1.0"),
+        shell:
+            """
+            Rscript scripts/10_merge_viewer_bundle.R \
+                --analysis_dir   "{params.analysis_dir}" \
+                --expression_dir "" \
+                --output_dir     "{params.output_dir}" \
+                --schema_version "{params.schema_version}" \
                 2>&1 | tee {log}
             touch {output.flag}
             """
@@ -433,7 +492,8 @@ if RUN_EXPR_EXPORT:
         input:
             data = QUERY_INPUT,
         output:
-            flag = f"{OUTPUT}/export/expression/expression_complete.flag",
+            flag     = f"{OUTPUT}/export/expression/expression_complete.flag",
+            manifest = f"{OUTPUT}/tables/expression/manifest.json" if RUN_TABLE_EXPRESSION else [],
         log:
             "logs/export_expression.log",
         params:
@@ -455,6 +515,8 @@ if RUN_EXPR_EXPORT:
             fmt              = EXPR.get("format", "parquet"),
             species          = EXPR.get("species") or config["species"],
             output_dir       = f"{OUTPUT}/export/expression",
+            csv_dir          = f"{OUTPUT}/tables/expression" if RUN_TABLE_EXPRESSION else "",
+            table_schema_version = "1.0",
         shell:
             """
             Rscript scripts/07_export_expression.R \
@@ -475,6 +537,8 @@ if RUN_EXPR_EXPORT:
                 --drop_zero_rows   {params.drop_zero} \
                 --gene_id_type     "{params.gene_id_type}" \
                 --format           "{params.fmt}" \
+                --csv_dir          "{params.csv_dir}" \
+                --table_schema_version "{params.table_schema_version}" \
                 --species          "{params.species}" \
                 2>&1 | tee {log}
             touch {output.flag}
@@ -549,11 +613,7 @@ if RUN_VIEWER:
     def viewer_export_inputs(wildcards):
         d = {}
         if RUN_VIEWER_ANALYSIS:
-            d["de_flag"] = rules.pseudobulk_de.output.flag
-            if RUN_COMP:
-                d["comp_flag"] = rules.composition.output.flag
-            if RUN_ENR:
-                d["enr_flag"] = rules.enrichment.output.flag
+            d["analysis_flag"] = rules.export_analysis.output.flag
         if RUN_VIEWER_EXPRESSION:
             d["expr_flag"] = rules.export_expression.output.flag
         return d
@@ -568,20 +628,13 @@ if RUN_VIEWER:
         log:
             "logs/viewer_export.log",
         params:
-            analysis              = str(RUN_VIEWER_ANALYSIS).upper(),
             expression            = str(RUN_VIEWER_EXPRESSION).upper(),
             work_dir              = f"{OUTPUT}/export/seqviewer_work",
-            analysis_dir          = f"{OUTPUT}/export/seqviewer_work/analysis",
+            analysis_dir          = f"{OUTPUT}/export/analysis" if RUN_VIEWER_ANALYSIS else "",
             expression_dir        = f"{OUTPUT}/export/seqviewer_work/expression",
             output_dir            = f"{OUTPUT}/export/seqviewer",
             expression_export_dir = f"{OUTPUT}/export/expression",
-            de_dir                = f"{OUTPUT}/pseudobulk_de",
-            enrichment_dir        = f"{OUTPUT}/enrichment" if RUN_ENR else "",
-            composition_dir       = f"{OUTPUT}/composition" if RUN_COMP else "",
             schema_version        = VIEWER_SCHEMA,
-            species               = config["species"],
-            padj                  = config["padj_cutoff"],
-            log2fc                = config["log2fc_cutoff"],
             organism              = VIEWER_ORGANISM,
             expr_prefix           = VIEWER_EXPR_PREFIX,
             expr_alias            = VIEWER_EXPR_ALIAS,
@@ -601,20 +654,8 @@ if RUN_VIEWER:
         shell:
             r"""
             set -euo pipefail
-            rm -rf "{params.analysis_dir}" "{params.expression_dir}"
-            mkdir -p "{params.analysis_dir}" "{params.expression_dir}"
-
-            if [ "{params.analysis}" = "TRUE" ]; then
-              Rscript scripts/06_export_seqviewer.R \
-                --de_dir          "{params.de_dir}" \
-                --enrichment_dir  "{params.enrichment_dir}" \
-                --composition_dir "{params.composition_dir}" \
-                --output_dir      "{params.analysis_dir}" \
-                --schema_version  "{params.schema_version}" \
-                --species         "{params.species}" \
-                --padj_cutoff     {params.padj} \
-                --log2fc_cutoff   {params.log2fc}
-            fi
+            rm -rf "{params.expression_dir}"
+            mkdir -p "{params.expression_dir}"
 
             if [ "{params.expression}" = "TRUE" ]; then
               Rscript scripts/08_build_viewer_bundle.R \
@@ -646,8 +687,61 @@ if RUN_VIEWER:
               --schema_version "{params.schema_version}" \
               2>&1 | tee {log}
 
-            rm -rf "{params.analysis_dir}" "{params.expression_dir}"
+            rm -rf "{params.expression_dir}"
             rmdir "{params.work_dir}" 2>/dev/null || true
+            """
+
+
+# ── Phase 5f: Canonical table merge + Excel ──────────────────────────────────
+if RUN_TABLE_MERGE:
+    rule merge_tables:
+        input:
+            analysis   = f"{OUTPUT}/tables/analysis/manifest.json" if RUN_TABLE_ANALYSIS else [],
+            expression = f"{OUTPUT}/tables/expression/manifest.json" if RUN_TABLE_EXPRESSION else [],
+        output:
+            manifest = f"{OUTPUT}/tables/manifest.json",
+            index    = f"{OUTPUT}/tables/index.tsv",
+            readme   = f"{OUTPUT}/tables/README.md",
+            flag     = f"{OUTPUT}/tables/tables_complete.flag",
+        log:
+            "logs/merge_tables.log",
+        params:
+            tables_dir          = f"{OUTPUT}/tables",
+            analysis_manifest   = f"{OUTPUT}/tables/analysis/manifest.json" if RUN_TABLE_ANALYSIS else "",
+            expression_manifest = f"{OUTPUT}/tables/expression/manifest.json" if RUN_TABLE_EXPRESSION else "",
+            table_schema_version = "1.0",
+        shell:
+            """
+            Rscript scripts/11_merge_tables.R \
+                --tables_dir          "{params.tables_dir}" \
+                --analysis_manifest   "{params.analysis_manifest}" \
+                --expression_manifest "{params.expression_manifest}" \
+                --table_schema_version "{params.table_schema_version}" \
+                2>&1 | tee {log}
+            touch {output.flag}
+            """
+
+
+if RUN_TABLE_EXCEL:
+    rule export_excel:
+        input:
+            manifest = f"{OUTPUT}/tables/manifest.json",
+        output:
+            manifest = f"{OUTPUT}/export/excel/excel_manifest.json",
+            readme   = f"{OUTPUT}/export/excel/README.md",
+            flag     = f"{OUTPUT}/export/excel/excel_complete.flag",
+        log:
+            "logs/export_excel.log",
+        params:
+            tables_dir = f"{OUTPUT}/tables",
+            output_dir = f"{OUTPUT}/export/excel",
+        shell:
+            """
+            Rscript scripts/12_export_excel.R \
+                --tables_dir "{params.tables_dir}" \
+                --output_dir "{params.output_dir}" \
+                2>&1 | tee {log}
+            touch {output.flag}
             """
 
 

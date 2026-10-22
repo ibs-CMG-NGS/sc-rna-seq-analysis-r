@@ -4,7 +4,7 @@
 > 수신: cmg-seqviewer 개발팀
 > 목적: 본 파이프라인 산출물을 cmg-seqviewer로 넘겨 연구자가 검색·비교·시각화할 수 있게 하는 연동 스펙 확정
 
-> **2026-10-21 상태**: public cmg-seqviewer v1.3.2는 `composition` / `expression_summary` dataset type을 아직 지원하지 않습니다. 파이프라인은 두 타입을 포함한 unified bundle을 정상 생성하며, 지원 뷰어 버전에서는 같은 폴더를 그대로 Import할 수 있습니다.
+> **2026-10-21 상태**: cmg-seqviewer `feat/cli` `46a491a`(v1.4.0 예정)에서 `composition` / `expression_summary`를 지원합니다. viewer팀 실측으로 `tutorial_compare` 69/69, C185/C66/long 발현 번들 각 1개 Import를 확인했습니다. v1.3.2 이하에서는 두 타입이 skip됩니다.
 
 ---
 
@@ -82,4 +82,4 @@
 
 회신 주시면 E2·E3 설계에 즉시 반영하겠습니다. 감사합니다.
 
-- [ ] 2026-10-21 재확인: public cmg-seqviewer HEAD(v1.3.2)와 PR refs 1–8에도 `DatasetType.composition`이 없습니다. 회신 기준 커밋 `417d981`·`5158ad0`의 브랜치/태그를 확인해 주세요.
+- [x] 2026-10-21 확인: viewer `feat/cli` `46a491a`(v1.4.0 예정)에서 `composition`/`expression_summary` 지원 확인. `tutorial_compare` 69/69, C185/C66/long 각 1개 Import 실측. v1.3.2 이하에서는 미지원.

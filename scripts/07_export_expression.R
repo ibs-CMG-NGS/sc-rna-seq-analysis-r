@@ -29,6 +29,9 @@ option_list <- list(
   make_option("--drop_zero_rows",   type = "character", default = "TRUE"),
   make_option("--gene_id_type",     type = "character", default = "symbol"),
   make_option("--format",           type = "character", default = "parquet"),
+  make_option("--csv_dir",          type = "character", default = "",
+              help = "Optional canonical CSV table root (writes manifest.json + datasets/*.csv)"),
+  make_option("--table_schema_version", type = "character", default = "1.0"),
   make_option("--species",          type = "character", default = "mouse")
 )
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -38,6 +41,17 @@ by_dataset   <- as_bool(opt$by_dataset)
 drop_zero    <- as_bool(opt$drop_zero_rows)
 stopifnot(nzchar(opt$input), file.exists(opt$input))
 dir.create(opt$output_dir, recursive = TRUE, showWarnings = FALSE)
+
+csv_datasets_dir <- ""
+if (nzchar(opt$csv_dir)) {
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("[export] R package 'data.table' is required for --csv_dir. ",
+         "Install with: conda install -c conda-forge r-data.table", call. = FALSE)
+  }
+  csv_datasets_dir <- file.path(opt$csv_dir, "datasets")
+  dir.create(csv_datasets_dir, recursive = TRUE, showWarnings = FALSE)
+  unlink(list.files(csv_datasets_dir, pattern = "\\.csv$", full.names = TRUE))
+}
 
 split_arg <- function(x) {
   v <- trimws(strsplit(x, ",")[[1]])
@@ -390,6 +404,82 @@ columns_md <- c(
   ""
 )
 writeLines(columns_md, file.path(opt$output_dir, files$columns))
+
+if (nzchar(csv_datasets_dir)) {
+  table_entries <- list()
+
+  write_canonical <- function(df, stem, layout, notes,
+                              gene_count = NA_integer_,
+                              cell_type_count = NA_integer_,
+                              significant = NA_integer_) {
+    csv_name <- paste0(stem, ".csv")
+    data.table::fwrite(df, file.path(csv_datasets_dir, csv_name), na = "")
+    entry <- list(
+      dataset_id         = paste0("expression_summary__", stem),
+      table_name         = stem,
+      alias              = paste("Expression", stem),
+      file_path          = paste0("datasets/", csv_name),
+      dataset_type       = "expression_summary",
+      layout             = layout,
+      row_count          = as.integer(nrow(df)),
+      column_count       = as.integer(ncol(df)),
+      gene_count         = as.integer(gene_count),
+      cell_type_count    = as.integer(cell_type_count),
+      significant_genes  = as.integer(significant),
+      notes              = notes,
+      tags               = as.list(c("scRNA", "expression", stem))
+    )
+    is_absent <- vapply(entry,
+                        function(x) length(x) == 1 && !is.list(x) && is.na(x),
+                        logical(1))
+    table_entries[[length(table_entries) + 1]] <<- entry[!is_absent]
+  }
+
+  pct_scale <- "0-100"
+  base_note <- paste0("min_cells=", opt$min_cells,
+                      "; gene_id_type=", opt$gene_id_type,
+                      "; by_dataset=", by_dataset)
+
+  write_canonical(long, "expression_long", "long",
+                  paste0("long gene x cell_type", if (by_dataset) " x dataset" else "",
+                         "; ", base_note),
+                  gene_count = genes_n, cell_type_count = length(keys_valid))
+  write_canonical(wide_mean, "expression_wide_mean", "wide",
+                  paste0("wide mean normalized expression; ", base_note),
+                  gene_count = genes_n, cell_type_count = length(keys_valid))
+  write_canonical(wide_pct, "expression_wide_pct", "wide",
+                  paste0("wide percent expressing (", pct_scale, "); ", base_note),
+                  gene_count = genes_n, cell_type_count = length(keys_valid))
+  write_canonical(gene_index, "gene_index", "gene",
+                  paste0("per-gene summary; ", base_note),
+                  gene_count = nrow(gene_index))
+  write_canonical(ct_summary, "cell_type_summary", "summary",
+                  paste0("per-cell-type summary; ", base_note),
+                  cell_type_count = nrow(ct_summary))
+  write_canonical(ct_ds, "cell_type_dataset_counts", "summary",
+                  paste0("cell counts by cell_type x dataset; ", base_note))
+  write_canonical(skipped, "skipped_groups", "summary",
+                  paste0("groups below min_cells; ", base_note))
+
+  jsonlite::write_json(
+    list(
+      table_schema_version = opt$table_schema_version,
+      source               = "07_export_expression.R",
+      format               = "csv",
+      species              = opt$species,
+      gene_id_type         = opt$gene_id_type,
+      cell_type_column     = ct_col,
+      by_dataset           = by_dataset,
+      n_genes              = genes_n,
+      n_cells_used         = sum(n_cells_valid),
+      min_cells            = opt$min_cells,
+      datasets             = table_entries
+    ),
+    file.path(opt$csv_dir, "manifest.json"),
+    pretty = TRUE, auto_unbox = TRUE, null = "null"
+  )
+  message("[export] canonical CSV tables: ", length(table_entries), " -> ", opt$csv_dir)
+}
 
 invisible(file.create(file.path(opt$output_dir, "expression_complete.flag")))
 message("[export] done: ", opt$output_dir, " | long rows: ", nrow(long),

@@ -4,7 +4,7 @@
 # 사용법:
 #   cp configs/template/config_compare.yml configs/config_<실험명>.yml
 #   # configs/config_<실험명>.yml에서 input_path, condition, reference_level 수정
-#   bash run_pipeline.sh configs/config_<실험명>.yml --cores 8
+#   snakemake --profile profiles/default --configfile configs/config_<실험명>.yml --cores 8
 #
 # 이 파일은 Snakefile이 자동으로 읽는 configs/template/config.yml 위에
 # 덮어쓰이는 값만 담고 있습니다. 나머지 기본값은 config.yml을 참고하세요.

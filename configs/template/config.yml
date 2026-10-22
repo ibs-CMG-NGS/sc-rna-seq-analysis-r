@@ -12,6 +12,7 @@
 # ── General ────────────────────────────────────────────────
 species: "human"          # "human" | "mouse"
 output_dir: "output/my_experiment"   # 실행별 하위 폴더
+start_from: "input"       # "input" | "loaded" (downstream-only: --config start_from=loaded)
 
 # DE cutoffs (top-level for consistency with bulk pipeline)
 padj_cutoff: 0.05
@@ -60,8 +61,17 @@ viewer_export:
   # Bundle metadata used only when expression: true
   expression_prefix: "my_experiment"
   expression_alias: "My experiment mean expression"
-  expression_cell_type_level: ""   # e.g. C185, C66
+  expression_cell_type_level: ""   # e.g. C185_named, C66_named
+  expression_primary: "wide"       # wide 권장; long은 per-dataset (viewer v1 5M rows 한도)
+  expression_include_long: false
   expression_pct_scale: "0-100"
+
+# ── Canonical CSV / Excel tables ───────────────────────────
+# `enabled` writes+merges canonical CSV tables into output/<run>/tables/;
+# `excel` adds output/<run>/export/excel/*.xlsx. Large tables stay CSV-only.
+table_export:
+  enabled: true
+  excel: true
 
 # Deprecated: use viewer_export. Kept so old configs keep working.
 export_seqviewer:

@@ -76,7 +76,8 @@ check <- function(cond, msg) {
 # --- overall (no dataset split) -------------------------------------------
 cat("[overall]\n")
 out1 <- file.path(tmp, "overall")
-run_export(out1)
+csv1 <- file.path(tmp, "tables", "expression")
+run_export(out1, c("--csv_dir", csv1))
 long <- read_parquet(file.path(out1, "expression_long.parquet"))
 wide <- read_parquet(file.path(out1, "expression_wide_mean.parquet"))
 cts  <- read_parquet(file.path(out1, "cell_type_summary.parquet"))
@@ -101,6 +102,46 @@ check(nrow(gidx) == length(genes), "gene_index covers all input genes")
 check(mf$n_cells_input == 595L && mf$n_cells_used == 590L,
       "manifest n_cells_input=595, n_cells_used=590")
 check(identical(unlist(mf$exclusion$values), "yes"), "manifest exclusion values is an array")
+
+# --- canonical CSV tables ---------------------------------------------------
+cat("[canonical tables]\n")
+csv_mf <- fromJSON(file.path(csv1, "manifest.json"), simplifyVector = FALSE)
+check(length(csv_mf$datasets) == 7L, "canonical manifest has 7 tables")
+csv_files <- file.path(csv1, vapply(csv_mf$datasets, function(x) x$file_path, character(1)))
+check(all(file.exists(csv_files)), "canonical CSV files exist")
+check(file.exists(file.path(csv1, "datasets", "expression_wide_mean.csv")),
+      "canonical wide mean CSV exists")
+
+tables_root <- file.path(tmp, "tables")
+log <- file.path(tmp, "merge_tables.log")
+status <- system2("Rscript",
+  c(file.path(root, "scripts", "11_merge_tables.R"),
+    "--tables_dir", tables_root,
+    "--expression_manifest", file.path(csv1, "manifest.json")),
+  stdout = log, stderr = log)
+if (status != 0) {
+  cat(readLines(log), sep = "\n")
+  stop("table merge failed")
+}
+merged <- fromJSON(file.path(tables_root, "manifest.json"), simplifyVector = FALSE)
+check(length(merged$datasets) == 7L, "merged manifest has 7 tables")
+check(file.exists(file.path(tables_root, "index.tsv")), "merged index.tsv exists")
+
+excel_dir <- file.path(tmp, "excel")
+log <- file.path(tmp, "export_excel.log")
+status <- system2("Rscript",
+  c(file.path(root, "scripts", "12_export_excel.R"),
+    "--tables_dir", tables_root,
+    "--output_dir", excel_dir),
+  stdout = log, stderr = log)
+if (status != 0) {
+  cat(readLines(log), sep = "\n")
+  stop("excel export failed")
+}
+check(file.exists(file.path(excel_dir, "expression_summary.xlsx")),
+      "expression_summary workbook exists")
+check(file.exists(file.path(excel_dir, "excel_manifest.json")),
+      "excel manifest exists")
 
 for (g in c("Gene001", "Gene002", "Gene003")) {
   ct <- c(Gene001 = "Neuron", Gene002 = "Astro", Gene003 = "Microglia")[[g]]
